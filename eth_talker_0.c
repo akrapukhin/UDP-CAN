@@ -12,11 +12,13 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <time.h>
 
 #define SERVERPORT "4950"	// the port users will be connecting to
 
 int main(int argc, char *argv[])
 {
+        char mes_counter = 0;
 	int sockfd;
 	struct addrinfo hints, *servinfo, *p;
 	int rv;
@@ -31,7 +33,7 @@ int main(int argc, char *argv[])
 	hints.ai_family = AF_INET6; // set to AF_INET to use IPv4
 	hints.ai_socktype = SOCK_DGRAM;
 
-	if ((rv = getaddrinfo(argv[1], SERVERPORT, &hints, &servinfo)) != 0) {
+	if ((rv = getaddrinfo(NULL, SERVERPORT, &hints, &servinfo)) != 0) {
 		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
 		return 1;
 	}
@@ -52,11 +54,21 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "talker: failed to create socket\n");
 		return 2;
 	}
+	
+	struct timespec timer_test, tim;
+	timer_test.tv_sec = 0;
+	timer_test.tv_nsec = 0;
 
-	if ((numbytes = sendto(sockfd, argv[2], strlen(argv[2]), 0,
+        while(1)
+        {
+	if ((numbytes = sendto(sockfd, &mes_counter, strlen(argv[2]), 0,
 			 p->ai_addr, p->ai_addrlen)) == -1) {
 		perror("talker: sendto");
 		exit(1);
+	}
+	mes_counter++;
+	if (mes_counter > 99) {mes_counter=0;}
+	//nanosleep(&timer_test, &tim);
 	}
 
 	freeaddrinfo(servinfo);

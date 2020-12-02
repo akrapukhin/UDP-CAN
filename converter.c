@@ -163,6 +163,9 @@ int main(void)
 	}
 
 	int can_sockets[2];
+	int memo[2];
+	memo[0] = 0;
+	memo[1] = 0;
 
 	can_sockets[0] = sc0;
 	can_sockets[1] = sc1;
@@ -188,13 +191,19 @@ int main(void)
 							exit(1);
 						}
 
-						printf("listener: got packet from %s\n",
-							inet_ntop(their_addr.ss_family,
-								get_in_addr((struct sockaddr *)&their_addr),
-								s, sizeof s));
-						printf("listener: packet is %d bytes long\n", numbytes);
-						buf[numbytes] = '\0';
-						printf("listener: packet contains \"%s\"\n", buf);
+						//printf("listener: got packet from %s\n",
+						//	inet_ntop(their_addr.ss_family,
+						//		get_in_addr((struct sockaddr *)&their_addr),
+						//		s, sizeof s));
+						//printf("listener: packet is %d bytes long\n", numbytes);
+						//buf[numbytes] = '\0';
+						
+						if (*buf - memo[i] > 1)
+						{
+						    printf("%d ooooooooooooooooooooooooooo buf: %d, memo: %d\n",i, *buf, memo[i]);
+						}
+						memo[i] = (*buf) % 100;
+						printf("%d %d\n",i, *buf);
 
 						frame.can_id  = i;
 						frame.can_dlc = 3;
@@ -204,7 +213,7 @@ int main(void)
 
 						//nbytes = write(s, &frame, sizeof(struct can_frame));
 						nbytes = send(can_sockets[i], &frame, sizeof(struct can_frame), 0);
-						printf("Wrote %d bytes, out of %lu bytes\n", nbytes, sizeof(struct can_frame));
+						//printf("Wrote %d bytes, out of %lu bytes\n", nbytes, sizeof(struct can_frame));
 
 					} // END got ready-to-read from poll()
 			} // END looping through file descriptors
