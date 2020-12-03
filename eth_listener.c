@@ -14,20 +14,18 @@
 #include <netdb.h>
 #include <time.h>
 
-#define SERVERPORT "4950"	// the port users will be connecting to
+#include <linux/can.h>
+#include <linux/can/raw.h>
+
+#define SERVERPORT "4952"	// the port users will be connecting to
 
 int main(int argc, char *argv[])
 {
-        char mes_counter = 0;
 	int sockfd;
 	struct addrinfo hints, *servinfo, *p;
 	int rv;
 	int numbytes;
 
-	if (argc != 3) {
-		fprintf(stderr,"usage: talker hostname message\n");
-		exit(1);
-	}
 
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_INET6; // set to AF_INET to use IPv4
@@ -46,6 +44,11 @@ int main(int argc, char *argv[])
 			perror("talker: socket");
 			continue;
 		}
+    if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
+      close(sockfd);
+      perror("listener: bind");
+      continue;
+    }
 
 		break;
 	}
@@ -54,22 +57,28 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "talker: failed to create socket\n");
 		return 2;
 	}
-	
-	struct timespec timer_test, tim;
-	timer_test.tv_sec = 0;
-	timer_test.tv_nsec = 0;
 
-        while(1)
-        {
-	if ((numbytes = sendto(sockfd, &mes_counter, strlen(argv[2]), 0,
-			 p->ai_addr, p->ai_addrlen)) == -1) {
-		perror("talker: sendto");
-		exit(1);
-	}
-	mes_counter++;
-	if (mes_counter > 99) {mes_counter=0;}
+  struct can_frame frame;
+
+  unsigned int memo = 0;
+  unsigned int errors = 0;
+
+  while(1){
+    if ((numbytes = recv(sockfd, &frame, sizeof(struct can_frame), 0)) == -1) {
+      perror("talker: sendto");
+      exit(1);
+    }
+
+    if (frame.can_id - memo > 1)
+    {
+      errors++;
+      //printf("%d ooooooooooooooooooooooooooo buf: %d, memo: %d\n",i, *buf, memo[i]);
+    }
+    memo = frame.can_id;
+    //printf("%d %d\n", frame.can_id, errors);
+    printf("%d %c %c %c %d\n", frame.can_id, frame.data[0], frame.data[1], frame.data[2], errors);
 	//nanosleep(&timer_test, &tim);
-	}
+  }
 
 	freeaddrinfo(servinfo);
 

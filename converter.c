@@ -24,8 +24,9 @@
 
 #define MYPORT0 "4950"	// the port users will be connecting to
 #define MYPORT1 "4951"
+#define ETHPORT "4952"
 
-#define MAXBUFLEN 100
+//#define MAXBUFLEN 100
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
@@ -40,12 +41,13 @@ void *get_in_addr(struct sockaddr *sa)
 int main(void)
 {
 
-	int sockfd0, sockfd1;
+	int sockfd0, sockfd1, sock_eth;
 	struct addrinfo hints, *servinfo, *p;
 	int rv;
 	int numbytes;
 	struct sockaddr_storage their_addr;
-	char buf[MAXBUFLEN];
+	//char buf[MAXBUFLEN];
+	struct can_frame frame_eth;
 	socklen_t addr_len;
 	char s[INET6_ADDRSTRLEN];
 
@@ -104,13 +106,34 @@ int main(void)
 		return 2;
 	}
 
+	//2
+	if ((rv = getaddrinfo(NULL, ETHPORT, &hints, &servinfo)) != 0) {
+		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+		return 1;
+	}
+	// loop through all the results and bind to the first we can
+	for(p = servinfo; p != NULL; p = p->ai_next) {
+		if ((sock_eth = socket(p->ai_family, p->ai_socktype,
+				p->ai_protocol)) == -1) {
+			perror("listener: socket");
+			continue;
+		}
+
+
+		break;
+	}
+	if (p == NULL) {
+		fprintf(stderr, "listener: failed to bind socket\n");
+		return 2;
+	}
+
 	freeaddrinfo(servinfo);
 
 	printf("listener: waiting to recvfrom...\n");
 
 	// Start off with room for 5 connections
 	// (We'll realloc as necessary)
-	int fd_count = 2;
+	int fd_count = 4;
 	int fd_size = 5;
 	struct pollfd *pfds = malloc(sizeof *pfds * fd_size);
 
@@ -163,12 +186,24 @@ int main(void)
 	}
 
 	int can_sockets[2];
-	int memo[2];
+	unsigned int memo[4];
+	unsigned int errors[4];
 	memo[0] = 0;
 	memo[1] = 0;
+	memo[2] = 0;
+	memo[3] = 0;
+	errors[0] = 0;
+	errors[1] = 0;
+	errors[2] = 0;
+	errors[3] = 0;
 
 	can_sockets[0] = sc0;
 	can_sockets[1] = sc1;
+
+	pfds[2].fd = sc0;
+	pfds[2].events = POLLIN;
+	pfds[3].fd = sc1;
+	pfds[3].events = POLLIN;
 
 	//////////////// POLL LOOP ///////////////////////////////
 	// Main loop
@@ -185,7 +220,7 @@ int main(void)
 					// Check if someone's ready to read
 					if (pfds[i].revents & POLLIN) { // We got one!!
 						// If not the listener, we're just a regular client
-						if ((numbytes = recvfrom(pfds[i].fd, buf, MAXBUFLEN-1 , 0,
+						if ((numbytes = recvfrom(pfds[i].fd, &frame_eth, sizeof(struct can_frame) , 0,
 							(struct sockaddr *)&their_addr, &addr_len)) == -1) {
 							perror("recvfrom");
 							exit(1);
@@ -197,23 +232,53 @@ int main(void)
 						//		s, sizeof s));
 						//printf("listener: packet is %d bytes long\n", numbytes);
 						//buf[numbytes] = '\0';
-						
-						if (*buf - memo[i] > 1)
+
+						if (frame_eth.can_id - memo[i] > 1)
 						{
-						    printf("%d ooooooooooooooooooooooooooo buf: %d, memo: %d\n",i, *buf, memo[i]);
+							errors[i]++;
+						  //printf("%d ooooooooooooooooooooooooooo buf: %d, memo: %d\n",i, *buf, memo[i]);
 						}
-						memo[i] = (*buf) % 100;
-						printf("%d %d\n",i, *buf);
+						memo[i] = frame_eth.can_id;
+						printf("%d %d %c %c %c %d %d %d %d\n", i, frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2], errors[0], errors[1], errors[2], errors[3]);
+						//printf("%d %d %c %c %c\n", i, frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2]);
 
-						frame.can_id  = i;
-						frame.can_dlc = 3;
-						frame.data[0] = buf[0];
-						frame.data[1] = buf[1];
-						frame.data[2] = buf[2];
+            if (i<=1)
+						{
+							frame.can_id  = frame_eth.can_id;
+							frame.can_dlc = 3;
+							frame.data[0] = 0x63; //c - converter
+							frame.data[1] = 0x62; //b - bus
+							if (i == 0){
+								frame.data[2] = 0x30; //vcan0
+							}
+							else{
+								frame.data[2] = 0x31; //vcan1
+							}
 
-						//nbytes = write(s, &frame, sizeof(struct can_frame));
-						nbytes = send(can_sockets[i], &frame, sizeof(struct can_frame), 0);
-						//printf("Wrote %d bytes, out of %lu bytes\n", nbytes, sizeof(struct can_frame));
+							//nbytes = write(s, &frame, sizeof(struct can_frame));
+							nbytes = send(can_sockets[i], &frame, sizeof(struct can_frame), 0);
+							//printf("Wrote %d bytes, out of %lu bytes\n", nbytes, sizeof(struct can_frame));
+						}
+						else
+						{
+							frame.can_id  = frame_eth.can_id;
+							frame.can_dlc = 3;
+							frame.data[0] = 0x63; //c - converter
+							frame.data[1] = 0x65; //e - ethernet
+							if (i == 2){
+								frame.data[2] = 0x30; //vcan0
+							}
+							else{
+								frame.data[2] = 0x31; //vcan1
+							}
+
+							if ((nbytes = sendto(sock_eth, &frame, sizeof(struct can_frame), 0, p->ai_addr, p->ai_addrlen)) == -1) {
+								perror("talker: sendto1");
+								exit(1);
+							}
+							//printf("%d %d %d %d\n", frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2]);
+						}
+
 
 					} // END got ready-to-read from poll()
 			} // END looping through file descriptors
