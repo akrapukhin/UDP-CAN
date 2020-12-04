@@ -25,6 +25,7 @@
 #define MYPORT0 "4950"	// the port users will be connecting to
 #define MYPORT1 "4951"
 #define ETHPORT "4952"
+#define CYCLES 1000000
 
 //#define MAXBUFLEN 100
 
@@ -188,6 +189,9 @@ int main(void)
 	int can_sockets[2];
 	unsigned int memo[4];
 	unsigned int errors[4];
+	unsigned int counters[4];
+	unsigned int first_vals[4] = {0};
+	float results[4];
 	memo[0] = 0;
 	memo[1] = 0;
 	memo[2] = 0;
@@ -196,6 +200,14 @@ int main(void)
 	errors[1] = 0;
 	errors[2] = 0;
 	errors[3] = 0;
+	counters[0] = 0;
+	counters[1] = 0;
+	counters[2] = 0;
+	counters[3] = 0;
+	results[0] = 0;
+	results[1] = 0;
+	results[2] = 0;
+	results[3] = 0;
 
 	can_sockets[0] = sc0;
 	can_sockets[1] = sc1;
@@ -204,6 +216,8 @@ int main(void)
 	pfds[2].events = POLLIN;
 	pfds[3].fd = sc1;
 	pfds[3].events = POLLIN;
+
+	int results_printed = 0;
 
 	//////////////// POLL LOOP ///////////////////////////////
 	// Main loop
@@ -233,13 +247,15 @@ int main(void)
 						//printf("listener: packet is %d bytes long\n", numbytes);
 						//buf[numbytes] = '\0';
 
+
+
 						if (frame_eth.can_id - memo[i] > 1)
 						{
 							errors[i]++;
 						  //printf("%d ooooooooooooooooooooooooooo buf: %d, memo: %d\n",i, *buf, memo[i]);
 						}
 						memo[i] = frame_eth.can_id;
-						printf("%d %d %c %c %c %d %d %d %d\n", i, frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2], errors[0], errors[1], errors[2], errors[3]);
+						///printf("%d %d %c %c %c %d %d %d %d\n", i, frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2], errors[0], errors[1], errors[2], errors[3]);
 						//printf("%d %d %c %c %c\n", i, frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2]);
 
             if (i<=1)
@@ -277,6 +293,22 @@ int main(void)
 								exit(1);
 							}
 							//printf("%d %d %d %d\n", frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2]);
+						}
+
+						if (counters[i] == 0){first_vals[i] = frame_eth.can_id;}
+
+						counters[i]++;
+						if (counters[i] > CYCLES && results[i] == 0.0){
+							results[i] = (float)counters[i] / (float)(frame_eth.can_id);// - first_vals[i]);
+							printf("%d %d %d/%d\n", i, frame_eth.can_id, counters[i], frame_eth.can_id);
+						}
+
+						if (results[0]>0 && results[1]>0 && results[2]>0 && results[3]>0 && results_printed == 0){
+							printf("eth_talker0-converter %f\n", results[0]);
+							printf("eth_talker1-converter %f\n", results[1]);
+							printf("can_talker0-converter %f\n", results[2]);
+							printf("can_talker1-converter %f\n", results[3]);
+							results_printed = 1;
 						}
 
 

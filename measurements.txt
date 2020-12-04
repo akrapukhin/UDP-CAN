@@ -1,0 +1,130 @@
+CYCLES 1000000
+CYCLES 1000000
+CYCLES 1000000
+
+1)
+//nanosleep(&timer_test, &tim);
+
+eth_talker0-converter 0.370795
+eth_talker1-converter 0.222411
+can_talker0-converter 0.136389
+can_talker1-converter 0.127137
+
+eth_listeners:
+vcan0-ethernet 0.136389
+vcan1-ethernet 0.127137
+
+can_listeners vcan0:
+converter-bus 0.135589
+talker-bus 1.000001
+
+can_listeners vcan1:
+converter-bus 0.136934
+talker-bus 0.998447
+
+
+2)
+timer_test.tv_sec = 0;
+timer_test.tv_nsec = 0;
+nanosleep(&timer_test, &tim);
+all are received!
+
+
+3) 
+#define DUMMY 1000
+eth_talker0-converter 0.585420
+eth_talker1-converter 0.441894
+can_talker0-converter 0.325099
+can_talker1-converter 0.309869
+
+eth_listeners:
+vcan0-ethernet 0.325085
+vcan1-ethernet 0.309869
+
+can_listeners vcan0:
+converter-bus 0.278292
+talker-bus 1.000001
+
+can_listeners vcan1:
+converter-bus 0.280216
+talker-bus 1.000001
+
+4)
+#define DUMMY 2500
+eth_talker0-converter 0.633870
+eth_talker1-converter 0.603107
+can_talker0-converter 0.518211
+can_talker1-converter 0.509795
+
+eth_listeners:
+vcan0-ethernet 0.517856
+vcan1-ethernet 0.509411
+
+can_listeners vcan0:
+converter-bus 0.462875
+talker-bus 1.000001
+
+can_listeners vcan1:
+converter-bus 0.443028
+talker-bus 1.000001
+
+
+
+5)
+#define DUMMY 5000
+eth_talker0-converter 0.899067
+eth_talker1-converter 0.920493
+can_talker0-converter 0.900766
+can_talker1-converter 0.913007
+
+eth_listeners:
+vcan0-ethernet 0.900766
+vcan1-ethernet 0.913007
+
+can_listeners vcan0:
+converter-bus 0.846110
+talker-bus 0.999876
+
+can_listeners vcan1:
+converter-bus 0.873827
+talker-bus 1.000001
+
+6)
+#define DUMMY 7500
+eth_talker0-converter 0.999627
+eth_talker1-converter 0.999548
+can_talker0-converter 1.000001
+can_talker1-converter 1.000001
+
+eth_listeners:
+vcan0-ethernet 1.000001
+vcan1-ethernet 1.000001
+
+can_listeners vcan0:
+converter-bus 0.998643
+talker-bus 1.000001
+
+can_listeners vcan1:
+converter-bus 0.997269
+talker-bus 0.999872
+
+
+7)
+#define DUMMY 10000
+all!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

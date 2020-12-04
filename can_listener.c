@@ -13,6 +13,8 @@
 
 #include <time.h>
 
+#define CYCLES 1000000
+
 int main(int argc, char *argv[])
 {
     int s;
@@ -57,6 +59,9 @@ int main(int argc, char *argv[])
 
     unsigned int memo = 0;
     unsigned int errors = 0;
+    unsigned int counters[2] = {0};
+    unsigned int first_vals[2] = {0};
+    float results[2] = {0};
     while(1){
       if ((numbytes = recv(s, &frame, sizeof(struct can_frame), 0)) == -1) {
         perror("talker: sendto");
@@ -70,8 +75,35 @@ int main(int argc, char *argv[])
       }
       memo = frame.can_id;
       //printf("%d %d\n", frame.can_id, errors);
-      printf("%d %c %c %c %d\n", frame.can_id, frame.data[0], frame.data[1], frame.data[2], errors);
+      ///printf("%d %c %c %c %d\n", frame.can_id, frame.data[0], frame.data[1], frame.data[2], errors);
   	  //nanosleep(&timer_test, &tim);
+
+      if (frame.data[0] == 0x63){
+        if (counters[0] == 0){first_vals[0] = frame.can_id;}
+        counters[0]++;
+      }
+      else if (frame.data[0] == 0x74){
+        if (counters[1] == 0){first_vals[1] = frame.can_id;}
+        counters[1]++;
+      }
+      else{
+        printf("CONVERTER OR TALKER?\n");
+      }
+
+      if (counters[0] > CYCLES && frame.data[0] == 0x63 && results[0] == 0.0){
+        results[0] = (float)counters[0] / (float)(frame.can_id - first_vals[0]);
+      }
+
+      if (counters[1] > CYCLES && frame.data[0] == 0x74 && results[1] == 0.0){
+        results[1] = (float)counters[1] / (float)(frame.can_id - first_vals[1]);
+      }
+
+      if (results[0]>0 && results[1]>0){
+        printf("can_listeners %s:\n", ifname);
+        printf("converter-bus %f\n", results[0]);
+        printf("talker-bus %f\n", results[1]);
+        exit(0);
+      }
     }
 
 

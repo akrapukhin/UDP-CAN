@@ -13,6 +13,8 @@
 
 #include <time.h>
 
+#define DUMMY 2500
+
 int main(int argc, char *argv[])
 {
     int s;
@@ -47,12 +49,13 @@ int main(int argc, char *argv[])
     }
 
     struct timespec timer_test, tim;
-  	timer_test.tv_sec = 1;
-  	//timer_test.tv_nsec = 999999999;
-    timer_test.tv_nsec = 0;
+  	timer_test.tv_sec = 0;
+    timer_test.tv_nsec = 9;
 
     unsigned int mes_counter = 0;
     unsigned char data0 = 0;
+
+    unsigned int dummy_counter = 0;
 
     while(1){
       frame.can_id  = mes_counter;
@@ -73,7 +76,12 @@ int main(int argc, char *argv[])
       data0++;
       if (mes_counter > 4294967290) {mes_counter=0;}
       if (data0 >= 255) {data0=0;}
-  	  nanosleep(&timer_test, &tim);
+
+      for (int j=0; j<DUMMY; j++){
+  			dummy_counter = dummy_counter + 1;
+  		}
+  		dummy_counter = 0;
+  	  //nanosleep(&timer_test, &tim);
     }
 
 

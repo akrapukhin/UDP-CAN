@@ -17,6 +17,8 @@
 #include <linux/can.h>
 #include <linux/can/raw.h>
 
+#define DUMMY 2500
+
 //#define SERVERPORT "4950"	// the port users will be connecting to
 
 int main(int argc, char *argv[])
@@ -58,19 +60,20 @@ int main(int argc, char *argv[])
 	}
 
 	struct timespec timer_test, tim;
-	timer_test.tv_sec = 1;
-	//timer_test.tv_nsec = 999999999;
+	timer_test.tv_sec = 0;
   timer_test.tv_nsec = 0;
 
   struct can_frame frame;
   unsigned int mes_counter = 0;
+	unsigned int dummy_counter = 0;
   unsigned char data0 = 0;
   unsigned char data1 = 61;
   unsigned char data2 = 133;
 
   while(1){
+		//printf("%d\n", mes_counter);
     frame.can_id  = mes_counter;
-    frame.can_dlc = 3;
+    frame.can_dlc = 4;
     frame.data[0] = 0x65; //e - eth
     frame.data[1] = 0x63; //c - converter
 		if (argv[1][3] == '0'){
@@ -79,6 +82,15 @@ int main(int argc, char *argv[])
 		else{
 			frame.data[2] = 0x31;
 		}
+
+		if (mes_counter < 100000)
+		{
+			frame.data[3] = 0x00;
+		}
+		else{
+			frame.data[3] = 0xff;
+		}
+
 
     if ((numbytes = sendto(sockfd, &frame, sizeof(struct can_frame), 0, p->ai_addr, p->ai_addrlen)) == -1) {
       perror("talker: sendto");
@@ -92,7 +104,12 @@ int main(int argc, char *argv[])
     if (data0 >= 255) {data0=0;}
     if (data1 >= 255) {data1=0;}
     if (data2 >= 255) {data2=0;}
-	nanosleep(&timer_test, &tim);
+
+		for (int j=0; j<DUMMY; j++){
+			dummy_counter = dummy_counter + 1;
+		}
+		dummy_counter = 0;
+	//nanosleep(&timer_test, &tim);
   }
 
 	freeaddrinfo(servinfo);
