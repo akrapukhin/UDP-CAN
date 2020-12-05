@@ -25,7 +25,7 @@
 #define MYPORT0 "4950"	// the port users will be connecting to
 #define MYPORT1 "4951"
 #define ETHPORT "4952"
-#define CYCLES 1000000
+#define CYCLES 100000
 
 //#define MAXBUFLEN 100
 
@@ -53,7 +53,7 @@ int main(void)
 	char s[INET6_ADDRSTRLEN];
 
 	memset(&hints, 0, sizeof hints);
-	hints.ai_family = AF_INET6; // set to AF_INET to use IPv4
+	hints.ai_family = AF_INET; // set to AF_INET to use IPv4
 	hints.ai_socktype = SOCK_DGRAM;
 	hints.ai_flags = AI_PASSIVE; // use my IP
 
@@ -255,7 +255,7 @@ int main(void)
 						  //printf("%d ooooooooooooooooooooooooooo buf: %d, memo: %d\n",i, *buf, memo[i]);
 						}
 						memo[i] = frame_eth.can_id;
-						///printf("%d %d %c %c %c %d %d %d %d\n", i, frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2], errors[0], errors[1], errors[2], errors[3]);
+						//printf("%d %d %c %c %c %d %d %d %d\n", i, frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2], errors[0], errors[1], errors[2], errors[3]);
 						//printf("%d %d %c %c %c\n", i, frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2]);
 
             if (i<=1)
@@ -303,11 +303,12 @@ int main(void)
 							printf("%d %d %d/%d\n", i, frame_eth.can_id, counters[i], frame_eth.can_id);
 						}
 
-						if (results[0]>0 && results[1]>0 && results[2]>0 && results[3]>0 && results_printed == 0){
+						//if (results[0]>0 && results[1]>0 && results[2]>0 && results[3]>0 && results_printed == 0){
+						if (results[0]>0 && results[1]>0 && results_printed == 0){
 							printf("eth_talker0-converter %f\n", results[0]);
 							printf("eth_talker1-converter %f\n", results[1]);
-							printf("can_talker0-converter %f\n", results[2]);
-							printf("can_talker1-converter %f\n", results[3]);
+							//printf("can_talker0-converter %f\n", results[2]);
+							//printf("can_talker1-converter %f\n", results[3]);
 							results_printed = 1;
 						}
 

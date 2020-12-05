@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
       }
       memo = frame.can_id;
       //printf("%d %d\n", frame.can_id, errors);
-      //printf("%d %c %c %c %d\n", frame.can_id, frame.data[0], frame.data[1], frame.data[2], errors);
+      printf("%d %c %c %c\n", frame.can_id, frame.data[0], frame.data[1], frame.data[2]);
   	  //nanosleep(&timer_test, &tim);
 
       if (frame.data[0] == 0x63){
