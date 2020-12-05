@@ -10,7 +10,7 @@
 #alias eth_talker_0='./eth_talker 4950'
 #alias eth_talker_0='./eth_talker 4951'
 
-gnome-terminal --tab --title="pconverter" -- "./pconverter"
+gnome-terminal --tab --title="converter" -- "./converter"
 gnome-terminal --tab --title="eth_talker 4950" -- "./eth_talker" 4950
 gnome-terminal --tab --title="eth_talker 4951" -- "./eth_talker" 4951
 gnome-terminal --tab --title="eth_listener" -- "./eth_listener"

@@ -91,14 +91,15 @@ int main(int argc, char *argv[])
       }
 
       if (counters[0] > CYCLES && frame.data[0] == 0x63 && results[0] == 0.0){
-        results[0] = (float)counters[0] / (float)(frame.can_id - first_vals[0]);
+        results[0] = (float)counters[0] / (float)(frame.can_id);// - first_vals[0]);
       }
 
       if (counters[1] > CYCLES && frame.data[0] == 0x74 && results[1] == 0.0){
-        results[1] = (float)counters[1] / (float)(frame.can_id - first_vals[1]);
+        results[1] = (float)counters[1] / (float)(frame.can_id);// - first_vals[1]);
       }
 
       if (results[0]>0 && results[1]>0){
+        printf("\n\n\n");
         printf("can_listeners %s:\n", ifname);
         printf("converter-bus %f\n", results[0]);
         printf("talker-bus %f\n", results[1]);

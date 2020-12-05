@@ -100,14 +100,15 @@ int main(int argc, char *argv[])
     //printf("%d %c %c %c %d\n", frame.can_id, frame.data[0], frame.data[1], frame.data[2], errors);
 
     if (counters[0] > CYCLES && frame.data[2] == 0x30 && results[0] == 0.0){
-      results[0] = (float)counters[0] / (float)(frame.can_id - first_vals[0]);
+      results[0] = (float)counters[0] / (float)(frame.can_id);// - first_vals[0]);
     }
 
     if (counters[1] > CYCLES && frame.data[2] == 0x31 && results[1] == 0.0){
-      results[1] = (float)counters[1] / (float)(frame.can_id - first_vals[1]);
+      results[1] = (float)counters[1] / (float)(frame.can_id);// - first_vals[1]);
     }
 
     if (results[0]>0 && results[1]>0){
+      printf("\n\n\n");
       printf("eth_listeners:\n");
       printf("vcan0-ethernet %f\n", results[0]);
       printf("vcan1-ethernet %f\n", results[1]);

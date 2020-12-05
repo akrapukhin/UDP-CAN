@@ -31,6 +31,8 @@
 
 //#define MAXBUFLEN 100
 
+pthread_mutex_t lock;
+
 struct socket_info {
 	int in_id;
 	int out_id;
@@ -92,9 +94,18 @@ void *runSocket(void *sockinf)
 			 frame.data[0] = 0x63; //c - converter
 			 frame.data[1] = 0x65; //e - ethernet
 			 frame.data[2] = frame_eth.data[2];
+			 
+			 //pthread_mutex_lock (&lock);
+			 nbytes = sendto(sock_out, &frame, sizeof(struct can_frame), 0, p->ai_addr, p->ai_addrlen);
+			 //pthread_mutex_unlock (&lock);
 
-			 if ((nbytes = sendto(sock_out, &frame, sizeof(struct can_frame), 0, p->ai_addr, p->ai_addrlen)) == -1) {
+			 if (nbytes == -1) {
 				 //perror("talker: sendto1");
+				 exit(1);
+			 }
+			 
+			 if (nbytes < sizeof(struct can_frame)) {
+				 perror("WAHT");
 				 exit(1);
 			 }
 		 }
@@ -106,9 +117,10 @@ void *runSocket(void *sockinf)
 			 results = (float)counters / (float)(frame_eth.can_id);// - first_vals);
 		 }
 
-		 if (results>0){
-			 //printf("STRANGE %d->%d %d %f\n", sock_in, sock_out, stype, results);
-			 pthread_exit(NULL);
+		 if (results>0 && results_printed == 0){
+			 printf("%d->%d %d %f\n", sock_in, sock_out, stype, results);
+			 results_printed = 1;
+			 //pthread_exit(NULL);
 		 }
    }
 
@@ -127,6 +139,7 @@ void *get_in_addr(struct sockaddr *sa)
 
 int main(void)
 {
+	pthread_mutex_init(&lock, NULL);
 
 	int sockfd0, sockfd1, sock_eth;
 	struct addrinfo hints, *servinfo, *p;
@@ -284,6 +297,12 @@ int main(void)
 	si3.out_id = sock_eth;
 	si3.sock_type = 1;
 	si3.p = p;
+	
+	printf("eth 4950: %d\n", sockfd0);
+	printf("eth 4951: %d\n", sockfd1);
+	printf("bus 0: %d\n", sc0);
+	printf("bus 1: %d\n", sc1);
+	printf("eth 4952: %d\n", sock_eth);
 
 	pthread_create(&threads[0], NULL, runSocket, &si0);
 	pthread_create(&threads[1], NULL, runSocket, &si1);

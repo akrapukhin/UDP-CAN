@@ -1,0 +1,23 @@
+CYCLES 1000000
+CYCLES 1000000
+CYCLES 1000000
+
+1)
+//nanosleep(&timer_test, &tim);
+
+eth_talker0-converter 0.198983
+eth_talker1-converter 0.187412
+can_talker0-converter 0.153961
+can_talker1-converter 0.155703
+
+eth_listeners:
+vcan0-ethernet 0.153647
+vcan1-ethernet 0.155349
+
+can_listeners vcan0:
+converter-bus 0.147476
+talker-bus 0.753018
+
+can_listeners vcan1:
+converter-bus 0.153612
+talker-bus 0.905431

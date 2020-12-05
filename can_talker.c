@@ -49,7 +49,7 @@ int main(int argc, char *argv[])
     }
 
     struct timespec timer_test, tim;
-  	timer_test.tv_sec = 1;
+  	timer_test.tv_sec = 0;
     timer_test.tv_nsec = 0;
 
     unsigned int mes_counter = 0;
