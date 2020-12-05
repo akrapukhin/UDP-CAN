@@ -13,7 +13,7 @@
 
 #include <time.h>
 
-#define DUMMY 2500
+#define DUMMY 0
 
 int main(int argc, char *argv[])
 {
@@ -49,8 +49,8 @@ int main(int argc, char *argv[])
     }
 
     struct timespec timer_test, tim;
-  	timer_test.tv_sec = 0;
-    timer_test.tv_nsec = 9;
+  	timer_test.tv_sec = 1;
+    timer_test.tv_nsec = 0;
 
     unsigned int mes_counter = 0;
     unsigned char data0 = 0;

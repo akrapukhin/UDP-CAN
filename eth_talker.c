@@ -17,7 +17,7 @@
 #include <linux/can.h>
 #include <linux/can/raw.h>
 
-#define DUMMY 2500
+#define DUMMY 0
 
 //#define SERVERPORT "4950"	// the port users will be connecting to
 
@@ -109,7 +109,7 @@ int main(int argc, char *argv[])
 			dummy_counter = dummy_counter + 1;
 		}
 		dummy_counter = 0;
-	//nanosleep(&timer_test, &tim);
+    //nanosleep(&timer_test, &tim);
   }
 
 	freeaddrinfo(servinfo);

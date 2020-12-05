@@ -45,6 +45,7 @@ int main(int argc, char *argv[])
 			perror("talker: socket");
 			continue;
 		}
+        printf("P\n");
     if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
       close(sockfd);
       perror("listener: bind");
@@ -68,6 +69,7 @@ int main(int argc, char *argv[])
   float results[2] = {0};
 
   while(1){
+      //printf("WAIT");
     if ((numbytes = recv(sockfd, &frame, sizeof(struct can_frame), 0)) == -1) {
       perror("talker: sendto");
       exit(1);
@@ -95,7 +97,7 @@ int main(int argc, char *argv[])
       printf("WHICH BUS?\n");
     }
 
-		///printf("%d %c %c %c %d %d\n", frame.can_id, frame.data[0], frame.data[1], frame.data[2], errors, counters[0]);
+    //printf("%d %c %c %c %d\n", frame.can_id, frame.data[0], frame.data[1], frame.data[2], errors);
 
     if (counters[0] > CYCLES && frame.data[2] == 0x30 && results[0] == 0.0){
       results[0] = (float)counters[0] / (float)(frame.can_id - first_vals[0]);

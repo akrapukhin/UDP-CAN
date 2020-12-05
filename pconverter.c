@@ -58,11 +58,14 @@ void *runSocket(void *sockinf)
 	 int results_printed = 0;
 	 int numbytes;
 	 int nbytes;
+	 
+	 //printf("%d %d %d\n", sock_in, sock_out, stype);
 
 	 for(;;){
+		 //printf("%d\n", sock_in);
 		 if ((numbytes = recvfrom(sock_in, &frame_eth, sizeof(struct can_frame) , 0,
 			 (struct sockaddr *)&their_addr, &addr_len)) == -1) {
-			 perror("recvfrom");
+			 //perror("recvfromm");
 			 exit(1);
 		 }
 
@@ -71,7 +74,7 @@ void *runSocket(void *sockinf)
 			 errors++;
 		 }
 		 memo = frame_eth.can_id;
-		 ///printf("%d %d %c %c %c %d %d %d %d\n", i, frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2], errors[0], errors[1], errors[2], errors[3]);
+		 printf("%d %c %c %c %d\n", frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2], errors);
 
 			if (stype==0)
 		 {
@@ -91,7 +94,7 @@ void *runSocket(void *sockinf)
 			 frame.data[2] = frame_eth.data[2];
 
 			 if ((nbytes = sendto(sock_out, &frame, sizeof(struct can_frame), 0, p->ai_addr, p->ai_addrlen)) == -1) {
-				 perror("talker: sendto1");
+				 //perror("talker: sendto1");
 				 exit(1);
 			 }
 		 }
@@ -104,7 +107,7 @@ void *runSocket(void *sockinf)
 		 }
 
 		 if (results>0){
-			 printf("%d->%d %d %f\n", sock_in, sock_out, stype, results);
+			 //printf("STRANGE %d->%d %d %f\n", sock_in, sock_out, stype, results);
 			 pthread_exit(NULL);
 		 }
    }
@@ -274,12 +277,12 @@ int main(void)
 
 	si2.in_id = sc0;
 	si2.out_id = sock_eth;
-	si2.sock_type = 0;
+	si2.sock_type = 1;
 	si2.p = p;
 
 	si3.in_id = sc1;
 	si3.out_id = sock_eth;
-	si3.sock_type = 0;
+	si3.sock_type = 1;
 	si3.p = p;
 
 	pthread_create(&threads[0], NULL, runSocket, &si0);
@@ -291,14 +294,21 @@ int main(void)
 	//	printf("ERROR; return code from pthread_create() is %d\n", rc);
 	//	exit(-1);
 	//}
-
+	
+	/// wait all threads by joining them
+	for (int i = 0; i < 4; i++) {
+		pthread_join(threads[i], NULL);
+	}
+	
 	close(sockfd0);
 	close(sockfd1);
 	close(sc0);
 	close(sc1);
 	close(sock_eth);
   /* Last thing that main() should do */
+  printf("all closed lol");
   pthread_exit(NULL);
+  
 
 	return 0;
 }
