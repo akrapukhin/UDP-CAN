@@ -180,6 +180,7 @@ int main(void)
 			perror("listener: bind");
 			continue;
 		}
+		printf("socket %d created, address %d\n", sockfd0, get_in_addr(p->ai_addr));
 
 		break;
 	}
@@ -205,6 +206,7 @@ int main(void)
 			perror("listener: bind");
 			continue;
 		}
+		printf("socket %d created, address %d\n", sockfd1, get_in_addr(p->ai_addr));
 
 		break;
 	}
@@ -229,6 +231,7 @@ int main(void)
 
 		break;
 	}
+	printf("socket %d created, address %d\n", sock_eth, get_in_addr(p->ai_addr));
 	if (p == NULL) {
 		fprintf(stderr, "listener: failed to bind socket\n");
 		return 2;
@@ -264,6 +267,7 @@ int main(void)
 			perror("Error in socket bind");
 			return -2;
 	}
+	printf("socket %d created, address %d\n", sc0, get_in_addr((struct sockaddr *)&addr0));
 
 	//1
 	if((sc1 = socket(PF_CAN, SOCK_RAW, CAN_RAW)) == -1) {
@@ -279,6 +283,7 @@ int main(void)
 			perror("Error in socket bind");
 			return -2;
 	}
+	printf("socket %d created, address %d\n", sc1, get_in_addr((struct sockaddr *)&addr1));
 
 	pthread_t threads[4];
   int rc;
