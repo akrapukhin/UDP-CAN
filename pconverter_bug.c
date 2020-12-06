@@ -96,20 +96,15 @@ void *get_in_addr(struct sockaddr *sa)
 	return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-struct socket_info {
-	int in_id;
-	int out_id;
-	int sock_type;
-	struct addrinfo *p;
-};
+
 
 void *runSocket(void *sockinf)
 {
 	 int sock_in, sock_out, stype;
-	 sock_in = ((struct socket_info*)sockinf)->in_id;
-	 sock_out = ((struct socket_info*)sockinf)->out_id;
-	 stype = ((struct socket_info*)sockinf)->sock_type;
-	 struct addrinfo *p = ((struct socket_info*)sockinf)->p;
+	 sock_in = ((struct link*)sockinf)->sock_rx;
+	 sock_out = ((struct link*)sockinf)->sock_tx;
+	 stype = ((struct link*)sockinf)->type;
+	 struct addrinfo *p = ((struct link*)sockinf)->p;
 
 	 struct can_frame frame_eth, frame;
 	 struct sockaddr_storage their_addr;
@@ -224,7 +219,7 @@ int main(void)
 {
 	pthread_mutex_init(&lock, NULL);
 
-	int sockfd0, sockfd1, sock_eth;
+	int sockfd0, sockfd1;
 	struct addrinfo hints, *servinfo, *p;
 	int rv;
 
@@ -288,26 +283,6 @@ int main(void)
 		return 2;
 	}
 
-	//2
-	if ((rv = getaddrinfo("192.168.1.6", ETHPORT, &hints, &servinfo)) != 0) {
-		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-		return 1;
-	}
-	// loop through all the results and bind to the first we can
-	for(p = servinfo; p != NULL; p = p->ai_next) {
-		if ((sock_eth = socket(p->ai_family, p->ai_socktype,
-				p->ai_protocol)) == -1) {
-			perror("listener: socket");
-			continue;
-		}
-
-
-		break;
-	}
-	if (p == NULL) {
-		fprintf(stderr, "listener: failed to bind socket\n");
-		return 2;
-	}
 
 	freeaddrinfo(servinfo);
 
@@ -331,48 +306,38 @@ int main(void)
   int rc;
   long t;
 
-	struct socket_info si0, si1, si2, si3;
+	struct link si0, si1, si2, si3;
 
-	si0.in_id = sockfd0;
-	si0.out_id = sc0;
-	si0.sock_type = 0;
+	si0.sock_rx = sockfd0;
+	si0.sock_tx = sc0;
+	si0.type = 0;
 	si0.p = p;
 
-	si1.in_id = sockfd1;
-	si1.out_id = sc1;
-	si1.sock_type = 0;
+	si1.sock_rx = sockfd1;
+	si1.sock_tx = sc1;
+	si1.type = 0;
 	si1.p = p;
-
-	//si2.in_id = sc0;
-	//si2.out_id = sock_eth;
-	//si2.sock_type = 1;
-	//si2.p = p;
-
-	//si3.in_id = sc1;
-	//si3.out_id = sock_eth;
-	//si3.sock_type = 1;
-	//si3.p = p;
 	
-	si2.in_id = canudp_links[0].sock_rx;
-	si2.out_id = canudp_links[0].sock_tx;
-	si2.sock_type = canudp_links[0].type;
+	si2.sock_rx = canudp_links[0].sock_rx;
+	si2.sock_tx = canudp_links[0].sock_tx;
+	si2.type = canudp_links[0].type;
 	si2.p = canudp_links[0].p;
 
-	si3.in_id = canudp_links[1].sock_rx;
-	si3.out_id = canudp_links[1].sock_tx;
-	si3.sock_type = canudp_links[1].type;
+	si3.sock_rx = canudp_links[1].sock_rx;
+	si3.sock_tx = canudp_links[1].sock_tx;
+	si3.type = canudp_links[1].type;
 	si3.p = canudp_links[1].p;
 	
 	printf("eth 4950: %d\n", sockfd0);
 	printf("eth 4951: %d\n", sockfd1);
 	printf("bus 0: %d\n", sc0);
 	printf("bus 1: %d\n", sc1);
-	printf("eth 4952: %d\n", sock_eth);
+	printf("eth 4952: %d\n", canudp_links[0].sock_tx);
 	
-	printf("thread %d %d %d\n", si0.in_id, si0.out_id, si0.sock_type);
-	printf("thread %d %d %d\n", si1.in_id, si1.out_id, si1.sock_type);
-	printf("thread %d %d %d\n", si2.in_id, si2.out_id, si2.sock_type);
-	printf("thread %d %d %d\n", si3.in_id, si3.out_id, si3.sock_type);
+	printf("thread %d %d %d\n", si0.sock_rx, si0.sock_tx, si0.type);
+	printf("thread %d %d %d\n", si1.sock_rx, si1.sock_tx, si1.type);
+	printf("thread %d %d %d\n", si2.sock_rx, si2.sock_tx, si2.type);
+	printf("thread %d %d %d\n", si3.sock_rx, si3.sock_tx, si3.type);
 
 	pthread_create(&threads[0], NULL, runSocket, &si0);
 	pthread_create(&threads[1], NULL, runSocket, &si1);
@@ -393,7 +358,7 @@ int main(void)
 	close(sockfd1);
 	close(sc0);
 	close(sc1);
-	close(sock_eth);
+	close(canudp_links[0].sock_tx);
   /* Last thing that main() should do */
   printf("all closed lol");
   pthread_exit(NULL);
