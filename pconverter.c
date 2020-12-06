@@ -92,7 +92,7 @@ void *runSocket(void *sockinf)
 			 errors++;
 		 }
 		 memo = frame_eth.can_id;
-		 printf("%d %c %c %c\n", frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2]);
+		 //printf("%d %c %c %c\n", frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2]);
 		 //printf("%d %d\n", counters, frame_eth.can_id);
 
 			if (stype==0)
@@ -216,7 +216,7 @@ int main(void)
 	}
 
 	//2
-	if ((rv = getaddrinfo("192.168.1.6", ETHPORT, &hints, &servinfo)) != 0) {
+	if ((rv = getaddrinfo("192.168.1.6", ETHPORT, &hints, &servinfo)) != 0) { //"192.168.1.6"
 		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
 		return 1;
 	}

@@ -18,7 +18,7 @@
 #include <linux/can/raw.h>
 
 #define SERVERPORT "4952"	// the port users will be connecting to
-#define CYCLES 1000000
+#define CYCLES 100000
 
 int main(int argc, char *argv[])
 {
@@ -29,7 +29,7 @@ int main(int argc, char *argv[])
 
 
 	memset(&hints, 0, sizeof hints);
-	hints.ai_family = AF_INET6; // set to AF_INET to use IPv4
+	hints.ai_family = AF_INET; // set to AF_INET to use IPv4
 	hints.ai_socktype = SOCK_DGRAM;
 
 	if ((rv = getaddrinfo(NULL, SERVERPORT, &hints, &servinfo)) != 0) {

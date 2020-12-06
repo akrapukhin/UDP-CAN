@@ -31,8 +31,6 @@
 #define UDP_CAN 0
 #define CAN_UDP 1
 
-//#define MAXBUFLEN 100
-
 pthread_mutex_t lock;
 
 struct link {
@@ -115,7 +113,7 @@ void *runSocket(void *sockinf)
 			 errors++;
 		 }
 		 memo = frame_eth.can_id;
-		 printf("%d %c %c %c\n", frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2]);
+		 //printf("%d %c %c %c\n", frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2]);
 		 //printf("%d %d\n", counters, frame_eth.can_id);
 
 			if (stype==0)
@@ -210,80 +208,63 @@ struct link make_udpcan_link(int port_num, int can_socket){
 }
 
 
-int main(void)
-{
-	pthread_mutex_init(&lock, NULL);
-
-	int sockfd0, sockfd1;
+int main(void){
+	//pthread_mutex_init(&lock, NULL);
 	
 	//CAN sockets
 	int sc0, sc1;
     sc0 = init_can_interface("vcan0");
     sc1 = init_can_interface("vcan1");
+    printf("%d %d\n", sc0, sc1);
     int can_sockets[2] = {sc0, sc1};
     struct link canudp_links[2];
-    make_canudp_links(can_sockets, 2, canudp_links, "192.168.1.6", ETHPORT);
+    make_canudp_links(can_sockets, 2, canudp_links, "192.168.1.6", ETHPORT); //192.168.1.6 127.0.0.1
     
+    //
 	struct link udpcan_links[2];
-    udpcan_links[0] = make_udpcan_link(MYPORT0, 0);
-    udpcan_links[1] = make_udpcan_link(MYPORT1, 0);
-    sockfd0 = udpcan_links[0].sock_rx;
-    sockfd1 = udpcan_links[1].sock_rx;
-
-
-	struct link si0, si1, si2, si3;
-	
-	si0.sock_rx = sockfd0;
-	si0.sock_tx = sc0;
-	si0.type = 0;
-	si0.addr = udpcan_links[0].addr;
-
-	si1.sock_rx = sockfd1;
-	si1.sock_tx = sc1;
-	si1.type = 0;
-	si1.addr = udpcan_links[0].addr;
-	
-	si2 = canudp_links[0];
-	si3 = canudp_links[1];
-	
-	printf("eth 4950: %d\n", sockfd0);
-	printf("eth 4951: %d\n", sockfd1);
+    udpcan_links[0] = make_udpcan_link(MYPORT0, sc0);
+    udpcan_links[1] = make_udpcan_link(MYPORT1, sc1);
+    
+    printf("eth 4950: %d\n", udpcan_links[0].sock_rx);
+	printf("eth 4951: %d\n", udpcan_links[1].sock_rx);
 	printf("bus 0: %d\n", sc0);
 	printf("bus 1: %d\n", sc1);
 	printf("eth 4952: %d\n", canudp_links[0].sock_tx);
-	
-	printf("thread %d %d %d\n", si0.sock_rx, si0.sock_tx, si0.type);
-	printf("thread %d %d %d\n", si1.sock_rx, si1.sock_tx, si1.type);
-	printf("thread %d %d %d\n", si2.sock_rx, si2.sock_tx, si2.type);
-	printf("thread %d %d %d\n", si3.sock_rx, si3.sock_tx, si3.type);
 
-	pthread_t threads[4];
+    pthread_t threads[4];
+    int t;
     int rc;
-    long t;
-	pthread_create(&threads[0], NULL, runSocket, &si0);
-	pthread_create(&threads[1], NULL, runSocket, &si1);
-	pthread_create(&threads[2], NULL, runSocket, &si2);
-	pthread_create(&threads[3], NULL, runSocket, &si3);
-
-	//if (rc){
-	//	printf("ERROR; return code from pthread_create() is %d\n", rc);
-	//	exit(-1);
-	//}
-	
+    
+    for (t = 0; t<2; t++){
+        printf("thread %d %d %d\n", udpcan_links[t].sock_rx, udpcan_links[t].sock_tx, udpcan_links[t].type);
+        rc = pthread_create(&threads[t], NULL, runSocket, &udpcan_links[t]);
+        
+        if (rc){
+            printf("ERROR; return code from pthread_create() is %d\n", rc);
+            exit(-1);
+        }
+    }
+    
+    for (t = 2; t<4; t++){
+        printf("thread %d %d %d\n", canudp_links[t-2].sock_rx, canudp_links[t-2].sock_tx, canudp_links[t-2].type);
+        rc = pthread_create(&threads[t], NULL, runSocket, &canudp_links[t-2]);
+        
+        if (rc){
+            printf("ERROR; return code from pthread_create() is %d\n", rc);
+            exit(-1);
+        }
+    }
+    
 	/// wait all threads by joining them
 	for (int i = 0; i < 4; i++) {
 		pthread_join(threads[i], NULL);
 	}
-	
-	close(sockfd0);
-	close(sockfd1);
+    
+    close(udpcan_links[0].sock_rx);
+	close(udpcan_links[1].sock_rx);
 	close(sc0);
 	close(sc1);
 	close(canudp_links[0].sock_tx);
-  /* Last thing that main() should do */
-  printf("all closed lol");
-  pthread_exit(NULL);
-  
-
+    pthread_exit(NULL);
 	return 0;
 }

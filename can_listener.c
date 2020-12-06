@@ -13,7 +13,7 @@
 
 #include <time.h>
 
-#define CYCLES 1000000
+#define CYCLES 100000
 
 int main(int argc, char *argv[])
 {
@@ -74,8 +74,8 @@ int main(int argc, char *argv[])
         //printf("%d ooooooooooooooooooooooooooo buf: %d, memo: %d\n",i, *buf, memo[i]);
       }
       memo = frame.can_id;
-      //printf("%d %d\n", frame.can_id, errors);
-      printf("%d %c %c %c\n", frame.can_id, frame.data[0], frame.data[1], frame.data[2]);
+      //printf("%d %d\n", counters[0], counters[1]);
+      //printf("%d %c %c %c\n", counters[0], frame.data[0], frame.data[1], frame.data[2]);
   	  //nanosleep(&timer_test, &tim);
 
       if (frame.data[0] == 0x63){
