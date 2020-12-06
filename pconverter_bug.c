@@ -28,10 +28,62 @@
 #define MYPORT1 "4951"
 #define ETHPORT "4952"
 #define CYCLES 100000
+#define UDP_CAN 0
+#define CAN_UDP 1
 
 //#define MAXBUFLEN 100
 
 pthread_mutex_t lock;
+
+struct link {
+	int sock_rx;
+	int sock_tx;
+	int type;
+	struct addrinfo *p;
+};
+
+
+int make_canudp_links(int can_sockets[], int size, struct link canudp_links[], const char *ip_address, const char *port_num){
+    struct addrinfo hints, *servinfo, *p;
+    int rv;
+    int sock_descr;
+
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_INET; // set to AF_INET to use IPv4
+    hints.ai_socktype = SOCK_DGRAM;
+    hints.ai_flags = AI_PASSIVE; // use my IP
+    
+    if ((rv = getaddrinfo(ip_address, port_num, &hints, &servinfo)) != 0) {
+        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+        exit(1);
+    }
+    
+    // loop through all the results and bind to the first we can
+    for(p = servinfo; p != NULL; p = p->ai_next) {
+        printf("%d %d %d\n", p->ai_family, p->ai_socktype, p->ai_protocol);
+        if ((sock_descr = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
+            perror("listener: socket");
+            continue;
+        }
+        printf("socket %d created\n", sock_descr);
+
+        break;
+    }
+    if (p == NULL) {
+        fprintf(stderr, "listener: failed to bind socket\n");
+        exit(1);
+    }
+    freeaddrinfo(servinfo);
+    
+    int i;
+    for (i = 0; i < size; ++i) {
+        canudp_links[i].sock_rx = can_sockets[i];
+        canudp_links[i].sock_tx = sock_descr;
+        canudp_links[i].type = CAN_UDP;
+        canudp_links[i].p = p;
+    }
+    return 0;
+}
 
 
 // get sockaddr, IPv4 or IPv6:
@@ -270,6 +322,9 @@ int main(void)
 	int sc0, sc1;
     sc0 = init_can_interface("vcan0");
     sc1 = init_can_interface("vcan1");
+    int can_sockets[2] = {sc0, sc1};
+    struct link canudp_links[2];
+    make_canudp_links(can_sockets, 2, canudp_links, "192.168.1.6", ETHPORT);
 	//////
 
 	pthread_t threads[4];
@@ -288,15 +343,25 @@ int main(void)
 	si1.sock_type = 0;
 	si1.p = p;
 
-	si2.in_id = sc0;
-	si2.out_id = sock_eth;
-	si2.sock_type = 1;
-	si2.p = p;
+	//si2.in_id = sc0;
+	//si2.out_id = sock_eth;
+	//si2.sock_type = 1;
+	//si2.p = p;
 
-	si3.in_id = sc1;
-	si3.out_id = sock_eth;
-	si3.sock_type = 1;
-	si3.p = p;
+	//si3.in_id = sc1;
+	//si3.out_id = sock_eth;
+	//si3.sock_type = 1;
+	//si3.p = p;
+	
+	si2.in_id = canudp_links[0].sock_rx;
+	si2.out_id = canudp_links[0].sock_tx;
+	si2.sock_type = canudp_links[0].type;
+	si2.p = canudp_links[0].p;
+
+	si3.in_id = canudp_links[1].sock_rx;
+	si3.out_id = canudp_links[1].sock_tx;
+	si3.sock_type = canudp_links[1].type;
+	si3.p = canudp_links[1].p;
 	
 	printf("eth 4950: %d\n", sockfd0);
 	printf("eth 4951: %d\n", sockfd1);
