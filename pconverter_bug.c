@@ -144,6 +144,29 @@ void *runSocket(void *sockinf)
 
 }
 
+int init_can_interface(const char *ifname){
+    int sock_can_descr;
+    struct ifreq ifr;
+    struct sockaddr_can addr;
+    
+    printf("%d %d %d\n", PF_CAN, SOCK_RAW, CAN_RAW);
+    if((sock_can_descr = socket(PF_CAN, SOCK_RAW, CAN_RAW)) == -1) {
+        perror("Error while opening socket");
+        exit(1);
+    }
+    printf("socket %d created\n", sock_can_descr);
+	strcpy(ifr.ifr_name, ifname);
+	ioctl(sock_can_descr, SIOCGIFINDEX, &ifr);
+	addr.can_family  = AF_CAN;
+	addr.can_ifindex = ifr.ifr_ifindex;
+	printf("%s at index %d\n", ifname, ifr.ifr_ifindex);
+	if(bind(sock_can_descr, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+        perror("Error in socket bind");
+		exit(1);
+	}
+    return sock_can_descr;
+}
+
 
 int main(void)
 {
@@ -241,44 +264,13 @@ int main(void)
 	// (We'll realloc as necessary)
 	int fd_count = 4;
 	int fd_size = 5;
-
-
-  //CAN sockets
+	
+	/////////
+	//CAN sockets
 	int sc0, sc1;
-	struct sockaddr_can addr0, addr1;
-	struct ifreq ifr0, ifr1;
-	const char *ifname0 = "vcan0";
-	const char *ifname1 = "vcan1";
-
-	//0
-	if((sc0 = socket(PF_CAN, SOCK_RAW, CAN_RAW)) == -1) {
-			perror("Error while opening socket");
-			return -1;
-	}
-	strcpy(ifr0.ifr_name, ifname0);
-	ioctl(sc0, SIOCGIFINDEX, &ifr0);
-	addr0.can_family  = AF_CAN;
-	addr0.can_ifindex = ifr0.ifr_ifindex;
-	printf("%s at index %d\n", ifname0, ifr0.ifr_ifindex);
-	if(bind(sc0, (struct sockaddr *)&addr0, sizeof(addr0)) == -1) {
-			perror("Error in socket bind");
-			return -2;
-	}
-
-	//1
-	if((sc1 = socket(PF_CAN, SOCK_RAW, CAN_RAW)) == -1) {
-			perror("Error while opening socket");
-			return -1;
-	}
-	strcpy(ifr1.ifr_name, ifname1);
-	ioctl(sc1, SIOCGIFINDEX, &ifr1);
-	addr1.can_family  = AF_CAN;
-	addr1.can_ifindex = ifr1.ifr_ifindex;
-	printf("%s at index %d\n", ifname1, ifr1.ifr_ifindex);
-	if(bind(sc1, (struct sockaddr *)&addr1, sizeof(addr1)) == -1) {
-			perror("Error in socket bind");
-			return -2;
-	}
+    sc0 = init_can_interface("vcan0");
+    sc1 = init_can_interface("vcan1");
+	//////
 
 	pthread_t threads[4];
   int rc;
