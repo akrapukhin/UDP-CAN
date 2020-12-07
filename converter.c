@@ -26,6 +26,8 @@
 #define MYPORT1 "4951"
 #define ETHPORT "4952"
 #define CYCLES 100000
+//#define IPADDR "192.168.1.6"
+#define IPADDR "127.0.0.1"
 
 //#define MAXBUFLEN 100
 
@@ -108,7 +110,7 @@ int main(void)
 	}
 
 	//2
-	if ((rv = getaddrinfo("192.168.1.6", ETHPORT, &hints, &servinfo)) != 0) {
+	if ((rv = getaddrinfo(IPADDR, ETHPORT, &hints, &servinfo)) != 0) {
 		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
 		return 1;
 	}
@@ -257,7 +259,7 @@ int main(void)
 						memo[i] = frame_eth.can_id;
 						//printf("%d %d %c %c %c %d %d %d %d\n", i, frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2], errors[0], errors[1], errors[2], errors[3]);
 						//printf("%d %d %c %c %c\n", i, frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2]);
-						printf("%d %d %d %d\n", counters[0], counters[1], counters[2], counters[3]);
+						//printf("%d %d %d %d\n", counters[0], counters[1], counters[2], counters[3]);
 
             if (i<=1)
 						{

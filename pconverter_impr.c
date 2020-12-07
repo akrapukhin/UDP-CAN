@@ -73,7 +73,6 @@ void *runSocket(void *sockinf)
 	 int numbytes;
 	 int nbytes;
 	 
-	 printf("%d %d %d %d\n", sock_in, sock_out, stype, get_in_addr(p->ai_addr));
 
 	 for(;;){
 		 //printf("%d\n", sock_in);
@@ -84,8 +83,8 @@ void *runSocket(void *sockinf)
 		 }
 		 printf("%d %d %d\n", sock_in, sock_out, stype);
 		 //printf("%d\n", ((struct sockaddr_in*)&their_addr)->sin_addr.s_addr);
-		 
-		 
+
+
 
 		 if (frame_eth.can_id - memo > 1)
 		 {
@@ -103,7 +102,7 @@ void *runSocket(void *sockinf)
 			 frame.data[1] = 0x62; //b - bus
 			 frame.data[2] = frame_eth.data[2];
 			 nbytes = send(sock_out, &frame, sizeof(struct can_frame), 0);
-             
+
 		 }
 		 else
 		 {
@@ -112,7 +111,7 @@ void *runSocket(void *sockinf)
 			 frame.data[0] = 0x63; //c - converter
 			 frame.data[1] = 0x65; //e - ethernet
 			 frame.data[2] = frame_eth.data[2];
-			 
+
 			 //pthread_mutex_lock (&lock);
 			 nbytes = sendto(sock_out, &frame, sizeof(struct can_frame), 0, p->ai_addr, p->ai_addrlen);
              printf("%d sent %c %c %c to %d\n", sock_in, frame.data[0], frame.data[1], frame.data[2], sock_out);
@@ -122,7 +121,7 @@ void *runSocket(void *sockinf)
 				 //perror("talker: sendto1");
 				 exit(1);
 			 }
-			 
+
 			 if (nbytes < sizeof(struct can_frame)) {
 				 perror("WAHT");
 				 exit(1);
@@ -150,7 +149,7 @@ int init_can_interface(const char *ifname){
     int sock_can_descr;
     struct ifreq ifr;
     struct sockaddr_can addr;
-    
+
     printf("%d %d %d\n", PF_CAN, SOCK_RAW, CAN_RAW);
     if((sock_can_descr = socket(PF_CAN, SOCK_RAW, CAN_RAW)) == -1) {
         perror("Error while opening socket");
@@ -181,12 +180,12 @@ struct link make_udpcan_link(const char *port_num, int can_socket){
 	hints.ai_family = AF_INET; // set to AF_INET to use IPv4
 	hints.ai_socktype = SOCK_DGRAM;
 	hints.ai_flags = AI_PASSIVE; // use my IP
-    
+
 	if ((rv = getaddrinfo(NULL, port_num, &hints, &servinfo)) != 0) {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
 		exit(1);
 	}
-    
+
 	// loop through all the results and bind to the first we can
 	for(p = servinfo; p != NULL; p = p->ai_next) {
         printf("%d %d %d\n", p->ai_family, p->ai_socktype, p->ai_protocol);
@@ -208,7 +207,7 @@ struct link make_udpcan_link(const char *port_num, int can_socket){
 		exit(1);
 	}
     freeaddrinfo(servinfo);
-    
+
     struct link res = {sock_descr, can_socket, UDP_CAN, p};
     return res;
 }
@@ -223,12 +222,12 @@ int make_canudp_links(int can_sockets[], int size, struct link canudp_links[], c
     hints.ai_family = AF_INET; // set to AF_INET to use IPv4
     hints.ai_socktype = SOCK_DGRAM;
     hints.ai_flags = AI_PASSIVE; // use my IP
-    
+
     if ((rv = getaddrinfo(ip_address, port_num, &hints, &servinfo)) != 0) {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
         exit(1);
     }
-    
+
     // loop through all the results and bind to the first we can
     for(p = servinfo; p != NULL; p = p->ai_next) {
         printf("%d %d %d\n", p->ai_family, p->ai_socktype, p->ai_protocol);
@@ -245,7 +244,7 @@ int make_canudp_links(int can_sockets[], int size, struct link canudp_links[], c
         exit(1);
     }
     freeaddrinfo(servinfo);
-    
+
     int i;
     for (i = 0; i < size; ++i) {
         canudp_links[i].sock_rx = can_sockets[i];
@@ -258,7 +257,7 @@ int make_canudp_links(int can_sockets[], int size, struct link canudp_links[], c
 
 int main(void){
     //pthread_mutex_init(&lock, NULL);
-    
+
     //CAN sockets
 	int sc0, sc1;
     sc0 = init_can_interface("vcan0");
@@ -266,12 +265,12 @@ int main(void){
     int can_sockets[2] = {sc0, sc1};
     struct link canudp_links[2];
     make_canudp_links(can_sockets, 2, canudp_links, "192.168.1.6", ETHPORT);
-    
+
     //
     struct link udpcan_links[2];
     udpcan_links[0] = make_udpcan_link(MYPORT0, sc0);
     udpcan_links[1] = make_udpcan_link(MYPORT1, sc1);
-    
+
     printf("eth 4950: %d\n", udpcan_links[0].sock_rx);
 	printf("eth 4951: %d\n", udpcan_links[1].sock_rx);
 	printf("bus 0: %d\n", sc0);
@@ -281,32 +280,32 @@ int main(void){
     pthread_t threads[4];
     int t;
     int rc;
-    
+
     for (t = 0; t<2; t++){
         printf("thread %d %d %d\n", udpcan_links[t].sock_rx, udpcan_links[t].sock_tx, udpcan_links[t].type);
         rc = pthread_create(&threads[t], NULL, runSocket, &udpcan_links[t]);
-        
+
         if (rc){
             printf("ERROR; return code from pthread_create() is %d\n", rc);
             exit(-1);
         }
     }
-    
+
     for (t = 2; t<4; t++){
         printf("thread %d %d %d\n", canudp_links[t-2].sock_rx, canudp_links[t-2].sock_tx, canudp_links[t-2].type);
         rc = pthread_create(&threads[t], NULL, runSocket, &canudp_links[t-2]);
-        
+
         if (rc){
             printf("ERROR; return code from pthread_create() is %d\n", rc);
             exit(-1);
         }
     }
-    
+
 	/// wait all threads by joining them
 	for (int i = 0; i < 4; i++) {
 		pthread_join(threads[i], NULL);
 	}
-    
+
     close(udpcan_links[0].sock_rx);
 	close(udpcan_links[1].sock_rx);
 	close(sc0);

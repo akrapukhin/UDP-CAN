@@ -29,6 +29,9 @@
 #define ETHPORT "4952"
 #define CYCLES 100000
 
+//#define IPADDR "192.168.1.6"
+#define IPADDR "127.0.0.1"
+
 //#define MAXBUFLEN 100
 
 pthread_mutex_t lock;
@@ -71,9 +74,9 @@ void *runSocket(void *sockinf)
 	 int results_printed = 0;
 	 int numbytes;
 	 int nbytes;
-	 
+
 	 //printf("%d %d %d\n", sock_in, sock_out, stype);
-	 printf("%d %d %d %d\n", sock_in, sock_out, stype, get_in_addr(p->ai_addr));
+	 //printf("%d %d %d %d\n", sock_in, sock_out, stype, get_in_addr(p->ai_addr));
 
 	 for(;;){
 		 //printf("%d\n", sock_in);
@@ -82,10 +85,10 @@ void *runSocket(void *sockinf)
 			 //perror("recvfromm");
 			 exit(1);
 		 }
-		 
+
 		 //printf("%d\n", ((struct sockaddr_in*)&their_addr)->sin_addr.s_addr);
-		 
-		 
+
+
 
 		 if (frame_eth.can_id - memo > 1)
 		 {
@@ -111,7 +114,7 @@ void *runSocket(void *sockinf)
 			 frame.data[0] = 0x63; //c - converter
 			 frame.data[1] = 0x65; //e - ethernet
 			 frame.data[2] = frame_eth.data[2];
-			 
+
 			 //pthread_mutex_lock (&lock);
 			 nbytes = sendto(sock_out, &frame, sizeof(struct can_frame), 0, p->ai_addr, p->ai_addrlen);
 			 //pthread_mutex_unlock (&lock);
@@ -120,7 +123,7 @@ void *runSocket(void *sockinf)
 				 //perror("talker: sendto1");
 				 exit(1);
 			 }
-			 
+
 			 if (nbytes < sizeof(struct can_frame)) {
 				 perror("WAHT");
 				 exit(1);
@@ -180,7 +183,6 @@ int main(void)
 			perror("listener: bind");
 			continue;
 		}
-		printf("socket %d created, address %d\n", sockfd0, get_in_addr(p->ai_addr));
 
 		break;
 	}
@@ -206,7 +208,6 @@ int main(void)
 			perror("listener: bind");
 			continue;
 		}
-		printf("socket %d created, address %d\n", sockfd1, get_in_addr(p->ai_addr));
 
 		break;
 	}
@@ -216,7 +217,7 @@ int main(void)
 	}
 
 	//2
-	if ((rv = getaddrinfo("192.168.1.6", ETHPORT, &hints, &servinfo)) != 0) { //"192.168.1.6"
+	if ((rv = getaddrinfo(IPADDR, ETHPORT, &hints, &servinfo)) != 0) {
 		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
 		return 1;
 	}
@@ -231,7 +232,6 @@ int main(void)
 
 		break;
 	}
-	printf("socket %d created, address %d\n", sock_eth, get_in_addr(p->ai_addr));
 	if (p == NULL) {
 		fprintf(stderr, "listener: failed to bind socket\n");
 		return 2;
@@ -267,7 +267,6 @@ int main(void)
 			perror("Error in socket bind");
 			return -2;
 	}
-	printf("socket %d created, address %d\n", sc0, get_in_addr((struct sockaddr *)&addr0));
 
 	//1
 	if((sc1 = socket(PF_CAN, SOCK_RAW, CAN_RAW)) == -1) {
@@ -283,7 +282,6 @@ int main(void)
 			perror("Error in socket bind");
 			return -2;
 	}
-	printf("socket %d created, address %d\n", sc1, get_in_addr((struct sockaddr *)&addr1));
 
 	pthread_t threads[4];
   int rc;
@@ -310,13 +308,13 @@ int main(void)
 	si3.out_id = sock_eth;
 	si3.sock_type = 1;
 	si3.p = p;
-	
+
 	printf("eth 4950: %d\n", sockfd0);
 	printf("eth 4951: %d\n", sockfd1);
 	printf("bus 0: %d\n", sc0);
 	printf("bus 1: %d\n", sc1);
 	printf("eth 4952: %d\n", sock_eth);
-	
+
 	printf("thread %d %d %d\n", si0.in_id, si0.out_id, si0.sock_type);
 	printf("thread %d %d %d\n", si1.in_id, si1.out_id, si1.sock_type);
 	printf("thread %d %d %d\n", si2.in_id, si2.out_id, si2.sock_type);
@@ -331,12 +329,12 @@ int main(void)
 	//	printf("ERROR; return code from pthread_create() is %d\n", rc);
 	//	exit(-1);
 	//}
-	
+
 	/// wait all threads by joining them
 	for (int i = 0; i < 4; i++) {
 		pthread_join(threads[i], NULL);
 	}
-	
+
 	close(sockfd0);
 	close(sockfd1);
 	close(sc0);
@@ -345,7 +343,7 @@ int main(void)
   /* Last thing that main() should do */
   printf("all closed lol");
   pthread_exit(NULL);
-  
+
 
 	return 0;
 }

@@ -81,7 +81,7 @@ int main(int argc, char *argv[])
   			dummy_counter = dummy_counter + 1;
   		}
   		dummy_counter = 0;
-  	  nanosleep(&timer_test, &tim);
+  	  //nanosleep(&timer_test, &tim);
     }
 
 
