@@ -27,7 +27,7 @@
 #define MYPORT1 4951
 
 //data from all CAN interfaces is sent to this ip address and port
-#define IPADDR "127.0.0.1" //loopback for testing #define IPADDR "192.168.1.6"
+#define IPADDR "127.0.0.1" //loopback for testing. 
 #define ETHPORT 4952
 
 //type of connection (from Ethernet to CAN or vice versa)
@@ -43,6 +43,7 @@
 //for testing
 #define CYCLES 100000
 
+
 /*
 ** Each device has an individual port and a udp socket listening to this port.
 ** Data read from this socket is written to a CAN socket corresponding to a
@@ -55,10 +56,10 @@
 
 ** Both of these relationships are captured by the "struct link" defined below.
 
-** sock_rx - socket receiving data from Ethernet or from CAN
-** sock_tx - socket sending data to Ethernet or to CAN
-** type - UDP_CAN or CAN_UDP - from Ethernet to CAN or vice versa
-** addr - destination address (ip and port for canudp links) or receiving
+** @sock_rx - socket receiving data from Ethernet or from CAN
+** @sock_tx - socket sending data to Ethernet or to CAN
+** @type - UDP_CAN or CAN_UDP - from Ethernet to CAN or vice versa
+** @addr - destination address (ip and port for canudp links) or receiving
 **        address (for udpcan links)
 */
 struct link {
@@ -74,12 +75,131 @@ struct link {
 ** Data from all CAN interfaces is sent to a single address, so the sock_tx
 ** socket in all corresponding links is the same/
 
-** can_sockets[] - array of socket descriptors, one for each CAN interface
-** size - size of the array
-** canudp_links[] - array of links which is filled by the function
-** ip_address - destination ip address
-** port_num - specific port on the destination address
+** @can_sockets[] - array of socket descriptors, one for each CAN interface
+** @size - size of the array
+** @canudp_links[] - array of links which is filled by the function
+** @ip_address - destination ip address
+** @port_num - specific port on the destination address
 */
+int make_canudp_links(int can_sockets[], int size, struct link canudp_links[], const char *ip_address, int port_num);
+
+
+/*
+** Creates a udpcan link between a port and a CAN interface for each device
+** Each device has a separate unique port. The link is made between this port
+** and a CAN socket corresponding to the CAN interface to which the device is
+** connected to. This CAN socket may be not unique because multiple devices can
+** be connected to the same CAN bus.
+**
+** @port_num - port dedicated to a device
+** @can_socket - CAN socket corresponding to the CAN interface
+*/
+struct link make_udpcan_link(int port_num, int can_socket);
+
+
+/*
+** initializes a CAN interface. 
+** Here virtual CAN interfaces are used for testing.
+** Function returns a CAN socket bound to the interface.
+** 
+** @ifname - name of the CAN interface
+*/
+int init_can_interface(const char *ifname);
+
+
+/*
+** each link is processed by a separate pthread
+**
+** @link_ptr - pointer to struct link
+*/
+void *process_link_pthread(void *link_ptr);
+
+
+/*
+** process all links by polling
+*/
+void process_links_poll(struct link links[], int size);
+
+
+/*
+** combines two arrays of links into one
+*/
+void unite_links(struct link canudp_links[], struct link udpcan_links[], struct link united_links[], int canudp_size, int udpcan_size);
+
+
+/*
+** prints info about all links
+*/
+void print_links(struct link links[], int size);
+
+
+/*
+** close all sockets found in links
+*/
+void close_all_sockets(struct link links[], int size);
+
+
+int main(int argc, char *argv[]){
+  if (argc != 2) {
+		fprintf(stderr,"usage: converter mode\n");
+		printf("mode is either 'pthread' or 'poll'\n");
+		exit(1);
+	}
+
+	if (!(strcmp(argv[1], "pthread") == 0 || strcmp(argv[1], "poll") == 0)){
+		fprintf(stderr,"unknown mode %s; should be 'pthread' or 'poll'\n", argv[1]);
+		exit(1);
+	}
+	printf("mode: %s\n", argv[1]);
+
+  //total number of links
+	int num_links = NUM_CAN + NUM_DEV;
+
+	//initialize CAN interfaces and corresponding sockets
+	//virtual vcan interfaces are used here
+	int can_sockets[NUM_CAN];
+	printf("\nCAN interfaces:\n");
+	can_sockets[0] = init_can_interface("vcan0");
+	can_sockets[1] = init_can_interface("vcan1");
+
+	//create canudp links (from CAN to Ethernet), one for each CAN interface
+	struct link canudp_links[NUM_CAN];
+	make_canudp_links(can_sockets, NUM_CAN, canudp_links, IPADDR, ETHPORT);
+
+	//create udpcan links (from Ethernet to CAN), one for each device
+	struct link udpcan_links[NUM_DEV];
+	udpcan_links[0] = make_udpcan_link(MYPORT0, can_sockets[0]);
+	udpcan_links[1] = make_udpcan_link(MYPORT1, can_sockets[1]);
+
+  //unite links for convenience
+	struct link all_links[num_links];
+	unite_links(canudp_links, udpcan_links, all_links, NUM_CAN, NUM_DEV);
+
+  //print info
+	print_links(all_links, num_links);
+
+	//create threads
+	pthread_t threads[num_links];
+	int result_code;
+	int t;
+	for (t = 0; t < num_links; t++){
+		result_code = pthread_create(&threads[t], NULL, process_link_pthread, &all_links[t]);
+		if (result_code){
+			printf("ERROR; return code from pthread_create() is %d\n", result_code);
+			exit(-1);
+		}
+	}
+
+	//wait for all threads
+	for (t = 0; t < num_links; t++) {
+		pthread_join(threads[t], NULL);
+	}
+
+	close_all_sockets(all_links, num_links);
+	return 0;
+}
+
+
 int make_canudp_links(int can_sockets[], int size, struct link canudp_links[], const char *ip_address, int port_num){
 	//ip address and port
 	struct sockaddr_in addr;
@@ -103,11 +223,7 @@ int make_canudp_links(int can_sockets[], int size, struct link canudp_links[], c
 }
 
 
-/*
-** each link is processed by a separate pthread
-** link_ptr - pointer to struct link
-*/
-void *run_link(void *link_ptr)
+void *process_link_pthread(void *link_ptr)
 {
 	//data from link
 	int sock_in = ((struct link*)link_ptr)->sock_rx;
@@ -201,8 +317,6 @@ void *run_link(void *link_ptr)
 }
 
 
-
-
 int init_can_interface(const char *ifname){
 	int sock_can_descr;
 	struct ifreq ifr;
@@ -225,16 +339,6 @@ int init_can_interface(const char *ifname){
 }
 
 
-/*
-** Creates a udpcan link between a port and a CAN interface for each device
-** Each device has a separate unique port. The link is made between this port
-** and a CAN socket corresponding to the CAN interface to which the device is
-** connected to. This CAN socket may be not unique because multiple devices can
-** be connected to the same CAN bus.
-**
-** port_num - port dedicated to the device
-** can_socket - CAN socket corresponding to the CAN interface
-*/
 struct link make_udpcan_link(int port_num, int can_socket){
 	//fill in address
 	struct sockaddr_in addr;
@@ -257,6 +361,7 @@ struct link make_udpcan_link(int port_num, int can_socket){
 	return res;
 }
 
+
 void unite_links(struct link canudp_links[], struct link udpcan_links[], struct link united_links[], int canudp_size, int udpcan_size){
 	int i;
 	for (i=0; i<udpcan_size; ++i){
@@ -266,6 +371,7 @@ void unite_links(struct link canudp_links[], struct link udpcan_links[], struct 
 		united_links[udpcan_size + i] = canudp_links[i];
 	}
 }
+
 
 void print_links(struct link links[], int size){
 	char str[INET_ADDRSTRLEN];
@@ -285,6 +391,7 @@ void print_links(struct link links[], int size){
 	printf("\n");
 }
 
+
 void close_all_sockets(struct link links[], int size){
 	int i;
 	int sock_tx_udp_open = 1;
@@ -303,7 +410,8 @@ void close_all_sockets(struct link links[], int size){
 	}
 }
 
-void poll_links(struct link links[], int size){
+
+void process_links_poll(struct link links[], int size){
 	//array of file descriptors to poll
 	struct pollfd *pfds = malloc(sizeof *pfds * size);
 
@@ -416,68 +524,7 @@ void poll_links(struct link links[], int size){
 					}
 					results_printed = 1;
 				}
-			} //if (pfds[i].revents & POLLIN)
-		} //for(int i = 0; i < size; i++)
+			} //end if (pfds[i].revents & POLLIN)
+		} //end for(int i = 0; i < size; i++)
 	} //end for(;;)
-}
-
-
-int main(int argc, char *argv[]){
-  if (argc != 2) {
-		fprintf(stderr,"usage: converter mode\n");
-		printf("mode is either 'pthread' or 'poll'\n");
-		exit(1);
-	}
-
-	if (!(strcmp(argv[1], "pthread") == 0 || strcmp(argv[1], "poll") == 0)){
-		fprintf(stderr,"unknown mode %s; should be 'pthread' or 'poll'\n", argv[1]);
-		exit(1);
-	}
-	printf("mode: %s\n", argv[1]);
-
-  //total number of links
-	int num_links = NUM_CAN + NUM_DEV;
-
-	//initialize CAN interfaces and corresponding sockets
-	//virtual vcan interfaces are used here
-	int can_sockets[NUM_CAN];
-	printf("\nCAN interfaces:\n");
-	can_sockets[0] = init_can_interface("vcan0");
-	can_sockets[1] = init_can_interface("vcan1");
-
-	//create canudp links (from CAN to Ethernet), one for each CAN interface
-	struct link canudp_links[NUM_CAN];
-	make_canudp_links(can_sockets, NUM_CAN, canudp_links, IPADDR, ETHPORT);
-
-	//create udpcan links (from Ethernet to CAN), one for each device
-	struct link udpcan_links[NUM_DEV];
-	udpcan_links[0] = make_udpcan_link(MYPORT0, can_sockets[0]);
-	udpcan_links[1] = make_udpcan_link(MYPORT1, can_sockets[1]);
-
-  //unite links for convenience
-	struct link all_links[num_links];
-	unite_links(canudp_links, udpcan_links, all_links, NUM_CAN, NUM_DEV);
-
-  //print info
-	print_links(all_links, num_links);
-
-	//create threads
-	pthread_t threads[num_links];
-	int result_code;
-	int t;
-	for (t = 0; t < num_links; t++){
-		result_code = pthread_create(&threads[t], NULL, run_link, &all_links[t]);
-		if (result_code){
-			printf("ERROR; return code from pthread_create() is %d\n", result_code);
-			exit(-1);
-		}
-	}
-
-	//wait for all threads
-	for (t = 0; t < num_links; t++) {
-		pthread_join(threads[t], NULL);
-	}
-
-	close_all_sockets(all_links, num_links);
-	return 0;
 }
