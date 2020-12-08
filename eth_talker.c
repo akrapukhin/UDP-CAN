@@ -1,5 +1,5 @@
 /*
-** talker.c -- a datagram "client" demo
+** eth_talker.c -- a datagram ethernet talker
 */
 
 #include <stdio.h>
@@ -17,27 +17,22 @@
 #include <linux/can.h>
 #include <linux/can/raw.h>
 
-#define DUMMY 0
-
-//#define SERVERPORT "4950"	// the port users will be connecting to
-
 int main(int argc, char *argv[])
 {
+	if (argc < 2) {
+		fprintf(stderr,"usage: eth_talker portnumber [print wait s ns]\n");
+		exit(1);
+	}
+
+  //create socket to send messages
 	int sockfd;
 	struct addrinfo hints, *servinfo, *p;
 	int rv;
 	int numbytes;
-
-	if (argc != 2) {
-		fprintf(stderr,"usage: talker portnumber\n");
-		exit(1);
-	}
-
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_INET; // set to AF_INET to use IPv4
 	hints.ai_socktype = SOCK_DGRAM;
 	hints.ai_flags = AI_PASSIVE; // use my IP
-
 	if ((rv = getaddrinfo(NULL, argv[1], &hints, &servinfo)) != 0) {
 		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
 		return 1;
@@ -47,76 +42,61 @@ int main(int argc, char *argv[])
 	for(p = servinfo; p != NULL; p = p->ai_next) {
 		printf("%d\n", p->ai_family);
 		if ((sockfd = socket(p->ai_family, p->ai_socktype,
-				p->ai_protocol)) == -1) {
-			perror("talker: socket");
-			continue;
-		}
+			p->ai_protocol)) == -1) {
+				perror("eth_talker: socket");
+				continue;
+			}
 
-		break;
+			break;
 	}
-
 	if (p == NULL) {
-		fprintf(stderr, "talker: failed to create socket\n");
+		fprintf(stderr, "eth_talker: failed to create socket\n");
 		return 2;
 	}
 
-	struct timespec timer_test, tim;
-	timer_test.tv_sec = 0;
-  timer_test.tv_nsec = 0;
-
-  struct can_frame frame;
-  unsigned int mes_counter = 0;
-	unsigned int dummy_counter = 0;
-  unsigned char data0 = 0;
-  unsigned char data1 = 61;
-  unsigned char data2 = 133;
-
-  while(1){
-		//printf("%d\n", mes_counter);
-    frame.can_id  = mes_counter;
-    frame.can_dlc = 4;
-    frame.data[0] = 0x65; //e - eth
-    frame.data[1] = 0x63; //c - converter
-		if (argv[1][3] == '0'){
-			frame.data[2] = 0x30;
-		}
-		else{
-			frame.data[2] = 0x31;
+		//wait between transmissions
+		struct timespec timer_test, tim;
+		timer_test.tv_sec = 0;
+		timer_test.tv_nsec = 0;
+		if(argc == 6 && strcmp(argv[3], "wait")){
+			timer_test.tv_sec = argv[4][0] - '0';
+			timer_test.tv_nsec = argv[5][0] - '0';
+			printf("wait each cycle for %lds %ldns\n", timer_test.tv_sec, timer_test.tv_nsec);
 		}
 
-		if (mes_counter < 100000)
-		{
-			frame.data[3] = 0x00;
+		struct can_frame frame;
+		unsigned int mes_counter = 0;
+
+		while(1){
+			//can_id is incremented in each message
+			frame.can_id  = mes_counter;
+			frame.can_dlc = 3; //3 bytes sent in data field
+			frame.data[0] = 0x65; //e - eth (source)
+			frame.data[1] = 0x63; //c - converter (destination)
+			frame.data[2] = argv[1][3] - '0'; //device to which the message sent [0-9]
+
+			//print sent messages for demo
+			if (argc >= 3 && strcmp(argv[2], "print") == 0){
+				printf("%d %c %c %d\n", frame.can_id, frame.data[0], frame.data[1], frame.data[2]);
+			}
+
+			//send
+			if ((numbytes = sendto(sockfd, &frame, sizeof(struct can_frame), 0, p->ai_addr, p->ai_addrlen)) == -1) {
+				perror("talker: sendto");
+				exit(1);
+			}
+
+			//increment counter
+			mes_counter++;
+			if (mes_counter > 4294967290) {mes_counter=0;}
+
+			//wait if necessary
+			if (argc == 6 && strcmp(argv[3], "wait") == 0){
+				nanosleep(&timer_test, &tim);
+			}
 		}
-		else{
-			frame.data[3] = 0xff;
-		}
 
-
-    if ((numbytes = sendto(sockfd, &frame, sizeof(struct can_frame), 0, p->ai_addr, p->ai_addrlen)) == -1) {
-      perror("talker: sendto");
-      exit(1);
-    }
-    mes_counter++;
-    data0++;
-    data1++;
-    data2++;
-    if (mes_counter > 4294967290) {mes_counter=0;}
-    if (data0 >= 255) {data0=0;}
-    if (data1 >= 255) {data1=0;}
-    if (data2 >= 255) {data2=0;}
-
-		for (int j=0; j<DUMMY; j++){
-			dummy_counter = dummy_counter + 1;
-		}
-		dummy_counter = 0;
-    //nanosleep(&timer_test, &tim);
-  }
-
-	freeaddrinfo(servinfo);
-
-	printf("talker: sent %d bytes to %s\n", numbytes, argv[1]);
-	close(sockfd);
-
-	return 0;
-}
+		freeaddrinfo(servinfo);
+		close(sockfd);
+		return 0;
+	}

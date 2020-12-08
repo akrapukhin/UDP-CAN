@@ -75,7 +75,10 @@ int main(int argc, char *argv[])
       }
       memo = frame.can_id;
       //printf("%d %d\n", counters[0], counters[1]);
-      //printf("%d %c %c %c\n", counters[0], frame.data[0], frame.data[1], frame.data[2]);
+      if (argc >= 3 && strcmp(argv[2], "print") == 0){
+        printf("%d %c %c %d\n", counters[0], frame.data[0], frame.data[1], frame.data[2]);
+      }
+
   	  //nanosleep(&timer_test, &tim);
 
       if (frame.data[0] == 0x63){

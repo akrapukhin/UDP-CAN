@@ -1,5 +1,6 @@
 /*
-** talker.c -- a datagram "client" demo
+** eth_listener.c -- a datagram ethernet listener
+** all CAN interfaces send messages here through the udp-can converter
 */
 
 #include <stdio.h>
@@ -7,6 +8,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
+#include <stdbool.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -17,22 +19,26 @@
 #include <linux/can.h>
 #include <linux/can/raw.h>
 
-#define SERVERPORT "4952"	// the port users will be connecting to
+#define PORT "4952"	// port to listen
 #define CYCLES 100000
 
 int main(int argc, char *argv[])
 {
+	if (argc < 2) {
+		fprintf(stderr,"usage: eth_listener num_can_interfaces [print]\n");
+		exit(1);
+	}
+
 	int sockfd;
 	struct addrinfo hints, *servinfo, *p;
 	int rv;
 	int numbytes;
 
-
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_INET; // set to AF_INET to use IPv4
 	hints.ai_socktype = SOCK_DGRAM;
 
-	if ((rv = getaddrinfo(NULL, SERVERPORT, &hints, &servinfo)) != 0) {
+	if ((rv = getaddrinfo(NULL, PORT, &hints, &servinfo)) != 0) {
 		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
 		return 1;
 	}
@@ -62,65 +68,66 @@ int main(int argc, char *argv[])
 
   struct can_frame frame;
 
-  unsigned int memo = 0;
-  unsigned int errors = 0;
-  unsigned int counters[2] = {0};
-	unsigned int first_vals[2] = {0};
-  float results[2] = {0};
+	int size = argv[1][0] - '0';
+
+	//arrays necessary to compute results
+	unsigned int memo[size];
+	memset(memo, 0, size*sizeof(int));
+	unsigned int errors[size];
+	memset(errors, 0, size*sizeof(int));
+	unsigned int counters[size];
+	memset(counters, 0, size*sizeof(int));
+	float results[size];
+	memset(results, 0, size*sizeof(float));
+	bool results_computed[size];
+	memset(results_computed, false, size*sizeof(bool));
+	bool all_results_ready = false;
+	bool results_printed = false;
+
+	printf("\n\n\n");
 
   while(1){
-      //printf("WAIT");
     if ((numbytes = recv(sockfd, &frame, sizeof(struct can_frame), 0)) == -1) {
-      perror("talker: sendto");
+      perror("talkerrrr: sendto");
       exit(1);
     }
 
-    if (frame.can_id - memo > 1)
+		if (argc >= 3 && strcmp(argv[2], "print") == 0){
+			printf("%d %c %c %d\n", frame.can_id, frame.data[0], frame.data[1], frame.data[2]);
+		}
+
+		int source = (int)frame.data[2];
+
+    if (frame.can_id - memo[source] > 1)
     {
-      errors++;
-      //printf("%d ooooooooooooooooooooooooooo buf: %d, memo: %d\n",i, *buf, memo[i]);
+      errors[source]++;
     }
-    memo = frame.can_id;
-    //printf("%d %d\n", frame.can_id, errors);
+    memo[source] = frame.can_id;
 
-	//nanosleep(&timer_test, &tim);
+		counters[source]++;
 
-    if (frame.data[2] == 0x30){
-			if (counters[0] == 0){first_vals[0] = frame.can_id;}
-      counters[0]++;
-    }
-    else if (frame.data[2] == 0x31){
-			if (counters[1] == 0){first_vals[1] = frame.can_id;}
-      counters[1]++;
-    }
-    else{
-      printf("WHICH BUS?\n");
+    if (counters[source] > CYCLES && !results_computed[source]){
+      results[source] = (float)counters[source] / (float)(frame.can_id);
+			results_computed[source] = true;
     }
 
-    //printf("%d %c %c %c %d\n", frame.can_id, frame.data[0], frame.data[1], frame.data[2], errors);
-
-    if (counters[0] > CYCLES && frame.data[2] == 0x30 && results[0] == 0.0){
-      results[0] = (float)counters[0] / (float)(frame.can_id);// - first_vals[0]);
-    }
-
-    if (counters[1] > CYCLES && frame.data[2] == 0x31 && results[1] == 0.0){
-      results[1] = (float)counters[1] / (float)(frame.can_id);// - first_vals[1]);
-    }
-
-    if (results[0]>0 && results[1]>0){
-      printf("\n\n\n");
-      printf("eth_listeners:\n");
-      printf("vcan0-ethernet %f\n", results[0]);
-      printf("vcan1-ethernet %f\n", results[1]);
-      exit(0);
-    }
-
+		int r;
+		all_results_ready = true;
+		for (r=0; r < size; r++){
+			if (!results_computed[r]){
+				all_results_ready = false;
+				break;
+			}
+		}
+		if (all_results_ready && !results_printed){
+			for (r = 0; r < size; r++){
+				printf("%d->port %s %f %d\n", source, PORT, results[r], errors[r]);
+			}
+			results_printed = true;
+		}
   }
 
 	freeaddrinfo(servinfo);
-
-	printf("talker: sent %d bytes to %s\n", numbytes, argv[1]);
 	close(sockfd);
-
 	return 0;
 }
