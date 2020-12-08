@@ -62,12 +62,13 @@ int main(int argc, char *argv[])
       frame.can_dlc = 3;
       frame.data[0] = 0x74; //t - talker
       frame.data[1] = 0x62; //b - bus
-      if (argv[1][4] == '0'){
-        frame.data[2] = 0x30; //vcan0
-      }
-      else{
-        frame.data[2] = 0x31; //vcan1
-      }
+      frame.data[2] = argv[1][4] - '0';
+      //if (argv[1][4] == '0'){
+      //  frame.data[2] = 0x30; //vcan0
+      //}
+      //else{
+      //  frame.data[2] = 0x31; //vcan1
+      //}
       if ((numbytes = send(s, &frame, sizeof(struct can_frame), 0)) == -1) {
         perror("talker: sendto");
         exit(1);

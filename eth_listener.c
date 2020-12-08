@@ -45,13 +45,11 @@ int main(int argc, char *argv[])
 
 	// loop through all the results and make a socket
 	for(p = servinfo; p != NULL; p = p->ai_next) {
-		printf("%d\n", p->ai_family);
 		if ((sockfd = socket(p->ai_family, p->ai_socktype,
 				p->ai_protocol)) == -1) {
 			perror("talker: socket");
 			continue;
 		}
-        printf("P\n");
     if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
       close(sockfd);
       perror("listener: bind");
@@ -121,7 +119,7 @@ int main(int argc, char *argv[])
 		}
 		if (all_results_ready && !results_printed){
 			for (r = 0; r < size; r++){
-				printf("%d->port %s %f %d\n", source, PORT, results[r], errors[r]);
+				printf("%d->port%s %f %d\n", r, PORT, results[r], errors[r]);
 			}
 			results_printed = true;
 		}
