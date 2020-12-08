@@ -23,8 +23,8 @@ int main(int argc, char *argv[])
     struct can_frame frame;
     struct ifreq ifr;
 
-    if (argc != 2) {
-      fprintf(stderr,"usage: talker can_interface\n");
+    if (argc < 2) {
+      fprintf(stderr,"usage: talker can_interface [print]\n");
       exit(1);
     }
 

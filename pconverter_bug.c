@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
+#include <stdbool.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -27,7 +28,7 @@
 #define MYPORT1 4951
 
 //data from all CAN interfaces is sent to this ip address and port
-#define IPADDR "127.0.0.1" //loopback for testing. 
+#define IPADDR "127.0.0.1" //loopback for testing.
 #define ETHPORT 4952
 
 //type of connection (from Ethernet to CAN or vice versa)
@@ -98,13 +99,13 @@ struct link make_udpcan_link(int port_num, int can_socket);
 
 
 /*
-** initializes a CAN interface. 
+** initializes a CAN interface.
 ** Here virtual CAN interfaces are used for testing.
 ** Function returns a CAN socket bound to the interface.
-** 
+**
 ** @ifname - name of the CAN interface
 */
-int init_can_interface(const char *ifname);
+int connect_to_can(const char *ifname);
 
 
 /*
@@ -159,8 +160,8 @@ int main(int argc, char *argv[]){
 	//virtual vcan interfaces are used here
 	int can_sockets[NUM_CAN];
 	printf("\nCAN interfaces:\n");
-	can_sockets[0] = init_can_interface("vcan0");
-	can_sockets[1] = init_can_interface("vcan1");
+	can_sockets[0] = connect_to_can("vcan0");
+	can_sockets[1] = connect_to_can("vcan1");
 
 	//create canudp links (from CAN to Ethernet), one for each CAN interface
 	struct link canudp_links[NUM_CAN];
@@ -178,21 +179,27 @@ int main(int argc, char *argv[]){
   //print info
 	print_links(all_links, num_links);
 
-	//create threads
-	pthread_t threads[num_links];
-	int result_code;
-	int t;
-	for (t = 0; t < num_links; t++){
-		result_code = pthread_create(&threads[t], NULL, process_link_pthread, &all_links[t]);
-		if (result_code){
-			printf("ERROR; return code from pthread_create() is %d\n", result_code);
-			exit(-1);
+  //run links
+	if (strcmp(argv[1], "pthread") == 0){ //thread mode
+		//create threads
+		pthread_t threads[num_links];
+		int result_code;
+		int t;
+		for (t = 0; t < num_links; t++){
+			result_code = pthread_create(&threads[t], NULL, process_link_pthread, &all_links[t]);
+			if (result_code){
+				printf("ERROR; return code from pthread_create() is %d\n", result_code);
+				exit(-1);
+			}
+		}
+
+		//wait for all threads
+		for (t = 0; t < num_links; t++) {
+			pthread_join(threads[t], NULL);
 		}
 	}
-
-	//wait for all threads
-	for (t = 0; t < num_links; t++) {
-		pthread_join(threads[t], NULL);
+	else { //poll mode
+		process_links_poll(all_links, num_links);
 	}
 
 	close_all_sockets(all_links, num_links);
@@ -247,7 +254,7 @@ void *process_link_pthread(void *link_ptr)
 	unsigned int errors = 0;
 	unsigned int counters = 0;
 	float results = 0;
-	int results_printed = 0;
+	bool results_printed = 0;
 
 	for(;;){
 
@@ -293,7 +300,7 @@ void *process_link_pthread(void *link_ptr)
 				exit(1);
 			}
 
-			if (numbytes < sizeof(struct can_frame)) {
+			if (numbytes < (int)sizeof(struct can_frame)) {
 				perror("WAHT");
 				exit(1);
 			}
@@ -307,17 +314,18 @@ void *process_link_pthread(void *link_ptr)
 		counters++;
 		if (counters > CYCLES && results == 0.0){
 			results = (float)counters / (float)(frame_received.can_id);
+			printf("%d %d %f\n", counters, frame_received.can_id, results);
 		}
-		if (results>0 && results_printed == 0){
-			printf("%d->%d %d %f\n", sock_in, sock_out, stype, results);
-			results_printed = 1;
+		if (results>0 && !results_printed){
+			printf("%d->%d %d %f %d\n", sock_in, sock_out, stype, results, errors);
+			results_printed = true;
 		}
 	}
 	pthread_exit(NULL);
 }
 
 
-int init_can_interface(const char *ifname){
+int connect_to_can(const char *ifname){
 	int sock_can_descr;
 	struct ifreq ifr;
 	struct sockaddr_can addr;
@@ -414,12 +422,13 @@ void close_all_sockets(struct link links[], int size){
 void process_links_poll(struct link links[], int size){
 	//array of file descriptors to poll
 	struct pollfd *pfds = malloc(sizeof *pfds * size);
+	//struct pollfd pfds[size];
 
 	//fill in array
-	int i;
-	for (i=0; i<size; ++i){
-		pfds[i].fd = links[i].sock_rx;
-		pfds[i].events = POLLIN;
+	int j;
+	for (j=0; j<size; ++j){
+		pfds[j].fd = links[j].sock_rx;
+		pfds[j].events = POLLIN;
 	}
 
 	struct can_frame frame_received, frame_tosend;
@@ -435,11 +444,19 @@ void process_links_poll(struct link links[], int size){
 
 	//for testing
 	unsigned int memo[size];
+	memset(memo, 0, size*sizeof(int));
 	unsigned int errors[size];
+	memset(errors, 0, size*sizeof(int));
 	unsigned int counters[size];
+	memset(counters, 0, size*sizeof(int));
 	float results[size];
-	int results_ready = 0;
-	int results_printed = 0;
+	memset(results, 0, size*sizeof(float));
+	bool results_computed[size];
+	memset(results_computed, false, size*sizeof(bool));
+	bool all_results_ready = false;
+	bool results_printed = false;
+
+	printf("%d %d %d %d\n", counters[0], counters[1], counters[2], counters[3]);
 
 	for(;;) {
 		int poll_count = poll(pfds, size, -1);
@@ -465,6 +482,7 @@ void process_links_poll(struct link links[], int size){
 					errors[i]++;
 				}
 				memo[i] = frame_received.can_id;
+				//printf("%d\n", frame_received.can_id);
 				//printf("%d %c %c %c\n", frame_received.can_id, frame_received.data[0], frame_received.data[1], frame_received.data[2]);
 
 				//some processing can be done with the received data. Here source of the
@@ -495,7 +513,7 @@ void process_links_poll(struct link links[], int size){
 						exit(1);
 					}
 
-					if (numbytes < sizeof(struct can_frame)) {
+					if (numbytes < (int)sizeof(struct can_frame)) {
 						perror("WAHT");
 						exit(1);
 					}
@@ -507,22 +525,25 @@ void process_links_poll(struct link links[], int size){
 
 				//for testing
 				counters[i]++;
-				if (counters[i] > CYCLES && results[i] == 0.0){
+				//printf("%d %d %d %d\n", counters[0], counters[1], counters[2], counters[3]);
+				if (counters[i] > CYCLES && results_computed[i] == false){
 					results[i] = (float)counters[i] / (float)(frame_received.can_id);
+					results_computed[i] = true;
+					printf("%d %d %f\n", counters[i], frame_received.can_id, results[i]);
 				}
 				int r;
-				results_ready = 1;
+				all_results_ready = true;
 				for (r=0; r < size; r++){
-					if (results[r] == 0.0){
-						results_ready = 0;
+					if (!results_computed[r]){
+						all_results_ready = false;
 						break;
 					}
 				}
-				if (results_ready>0 && results_printed == 0){
+				if (all_results_ready && !results_printed){
 					for (r = 0; r < size; r++){
-						printf("%d->%d %d %f\n", links[r].sock_rx, links[r].sock_tx, links[r].type, results[r]);
+						printf("%d->%d %d %f %d\n", links[r].sock_rx, links[r].sock_tx, links[r].type, results[r], errors[r]);
 					}
-					results_printed = 1;
+					results_printed = true;
 				}
 			} //end if (pfds[i].revents & POLLIN)
 		} //end for(int i = 0; i < size; i++)
