@@ -21,7 +21,6 @@
 ** посылается на свой ip/port. Я при выполнении задания предполагал, что информация со
 ** всех CAN-интерфейсов передается на один ip/port. Опять же, это легко поправить, если 
 ** необходимо использовать свой ip/port для каждого CAN-интерфейса.
-** 
 */
 
 #include <stdio.h>
@@ -102,8 +101,11 @@ struct link {
 ** @canudp_links[] - array of links which is filled by the function
 ** @ip_address - destination ip address
 ** @port_num - specific port on the destination address
+** @unique - flag setting to have unique sockets for writing to outside ip/port
+**           added for potentially improving multithreading, but I didn't see
+**           any difference
 */
-void make_canudp_links(int can_sockets[], int size, struct link canudp_links[], const char *ip_address, int port_num);
+void make_canudp_links(int can_sockets[], int size, struct link canudp_links[], const char *ip_address, int port_num, bool unique);
 
 
 /*
@@ -215,7 +217,7 @@ int main(int argc, char *argv[]){
 
 	//create canudp links (from CAN to Ethernet), one for each CAN interface
 	struct link canudp_links[NUM_CAN];
-	make_canudp_links(can_sockets, NUM_CAN, canudp_links, IPADDR, ETHPORT);
+	make_canudp_links(can_sockets, NUM_CAN, canudp_links, IPADDR, ETHPORT, false);
 
 	//create udpcan links (from Ethernet to CAN), one for each device
 	struct link udpcan_links[NUM_DEV];
@@ -256,7 +258,7 @@ int main(int argc, char *argv[]){
 }
 
 
-void make_canudp_links(int can_sockets[], int size, struct link canudp_links[], const char *ip_address, int port_num){
+void make_canudp_links(int can_sockets[], int size, struct link canudp_links[], const char *ip_address, int port_num, bool unique){
 	//ip address and port
 	struct sockaddr_in addr;
 	int sock_descr;
@@ -264,16 +266,68 @@ void make_canudp_links(int can_sockets[], int size, struct link canudp_links[], 
 	addr.sin_port = htons(port_num); //host-to-network (if host is little endian)
 	inet_pton(AF_INET, ip_address, &(addr.sin_addr));
 	if ((sock_descr = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
-		perror("can_socket: socket");
+		perror("tx socket: socket");
 	}
 
 	//fill in all links
 	for (int i = 0; i < size; ++i) {
+		if (unique){
+		  if ((sock_descr = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
+	        perror("tx socket: socket");
+	      }
+		}
 		canudp_links[i].sock_rx = can_sockets[i];
 		canudp_links[i].sock_tx = sock_descr;
 		canudp_links[i].type = CAN_UDP;
 		canudp_links[i].addr = addr;
 	}
+}
+
+
+struct link make_udpcan_link(int port_num, int can_socket){
+	//fill in address
+	struct sockaddr_in addr;
+	int sock_descr;
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(port_num);
+	addr.sin_addr.s_addr = INADDR_ANY; //set to the host ip
+	if ((sock_descr = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
+		perror("make_udpcan_link: socket");
+	}
+
+	//bind socket to port
+	if (bind(sock_descr, (struct sockaddr*)&addr, sizeof addr) == -1) {
+		close(sock_descr);
+		perror("make_udpcan_link: bind");
+	}
+
+	//create link
+	struct link res = {sock_descr, can_socket, UDP_CAN, addr};
+	return res;
+}
+
+
+int connect_to_can(const char *ifname){
+  //create CAN socket
+	int sock_can_descr;
+	struct ifreq ifr;
+	struct sockaddr_can addr;
+	if((sock_can_descr = socket(PF_CAN, SOCK_RAW, CAN_RAW)) == -1) {
+		perror("Error while opening socket");
+		exit(1);
+	}
+	strcpy(ifr.ifr_name, ifname);
+	ioctl(sock_can_descr, SIOCGIFINDEX, &ifr);
+	addr.can_family  = AF_CAN;
+	addr.can_ifindex = ifr.ifr_ifindex;
+	
+	//bind socket to CAN interface
+	if(bind(sock_can_descr, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+		perror("Error in socket bind");
+		exit(1);
+	}
+	printf("CAN socket %d is bound to CAN interface %s at index %d\n", sock_can_descr, ifname, ifr.ifr_ifindex);
+	return sock_can_descr;
 }
 
 
@@ -367,99 +421,6 @@ void *process_link_pthread(void *link_ptr)
 		}
 	} //end for(;;). Probably need to specify condition on which the infinite loop exits
 	pthread_exit(NULL);
-}
-
-
-int connect_to_can(const char *ifname){
-  //create CAN socket
-	int sock_can_descr;
-	struct ifreq ifr;
-	struct sockaddr_can addr;
-	if((sock_can_descr = socket(PF_CAN, SOCK_RAW, CAN_RAW)) == -1) {
-		perror("Error while opening socket");
-		exit(1);
-	}
-	strcpy(ifr.ifr_name, ifname);
-	ioctl(sock_can_descr, SIOCGIFINDEX, &ifr);
-	addr.can_family  = AF_CAN;
-	addr.can_ifindex = ifr.ifr_ifindex;
-	
-	//bind socket to CAN interface
-	if(bind(sock_can_descr, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-		perror("Error in socket bind");
-		exit(1);
-	}
-	printf("CAN socket %d is bound to CAN interface %s at index %d\n", sock_can_descr, ifname, ifr.ifr_ifindex);
-	return sock_can_descr;
-}
-
-
-struct link make_udpcan_link(int port_num, int can_socket){
-	//fill in address
-	struct sockaddr_in addr;
-	int sock_descr;
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(port_num);
-	addr.sin_addr.s_addr = INADDR_ANY; //set to the host ip
-	if ((sock_descr = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
-		perror("make_udpcan_link: socket");
-	}
-
-	//bind socket to port
-	if (bind(sock_descr, (struct sockaddr*)&addr, sizeof addr) == -1) {
-		close(sock_descr);
-		perror("make_udpcan_link: bind");
-	}
-
-	//create link
-	struct link res = {sock_descr, can_socket, UDP_CAN, addr};
-	return res;
-}
-
-
-void unite_links(struct link canudp_links[], struct link udpcan_links[], struct link united_links[], int canudp_size, int udpcan_size){
-	for (int i=0; i<udpcan_size; ++i){
-		united_links[i] = udpcan_links[i];
-	}
-	for (int i=0; i<canudp_size; ++i){
-		united_links[udpcan_size + i] = canudp_links[i];
-	}
-}
-
-
-void print_links(struct link links[], int size){
-	char str[INET_ADDRSTRLEN];
-	printf("\nLinks:\n");
-	for (int i=0; i<size; ++i){
-		if (links[i].type == UDP_CAN){
-			printf("Ethernet -> UDP socket %d (port %d) -> CAN socket %d -> CAN interface\n",
-			       links[i].sock_rx, htons(links[i].addr.sin_port), links[i].sock_tx);
-		}
-		else{
-			printf("CAN interface -> CAN socket %d -> UDP socket %d -> Ethernet (ip %s, port %d)\n",
-			       links[i].sock_rx, links[i].sock_tx, inet_ntop(AF_INET, &(links[i].addr.sin_addr),
-						 str, INET_ADDRSTRLEN), htons(links[i].addr.sin_port));
-		}
-	}
-	printf("\n");
-}
-
-
-void close_all_sockets(struct link links[], int size){
-	int sock_tx_udp_open = 1;
-	for (int i=0; i<size; ++i){
-		if (links[i].type == UDP_CAN){
-			close(links[i].sock_rx); //close UDP sockets corresponding to devices
-		}
-		else{
-			close(links[i].sock_rx); //close CAN sockets corresponding to CAN interfaces
-			//close UDP socket responsible to sending data outside only once
-			if (sock_tx_udp_open){
-				close(links[i].sock_tx);
-				sock_tx_udp_open = 0;
-			}
-		}
-	}
 }
 
 
@@ -588,3 +549,50 @@ void process_links_poll(struct link links[], int size){
 	} //end for(;;)
 	free(pfds);
 }
+
+
+void unite_links(struct link canudp_links[], struct link udpcan_links[], struct link united_links[], int canudp_size, int udpcan_size){
+	for (int i=0; i<udpcan_size; ++i){
+		united_links[i] = udpcan_links[i];
+	}
+	for (int i=0; i<canudp_size; ++i){
+		united_links[udpcan_size + i] = canudp_links[i];
+	}
+}
+
+
+void print_links(struct link links[], int size){
+	char str[INET_ADDRSTRLEN];
+	printf("\nLinks:\n");
+	for (int i=0; i<size; ++i){
+		if (links[i].type == UDP_CAN){
+			printf("Ethernet -> UDP socket %d (port %d) -> CAN socket %d -> CAN interface\n",
+			       links[i].sock_rx, htons(links[i].addr.sin_port), links[i].sock_tx);
+		}
+		else{
+			printf("CAN interface -> CAN socket %d -> UDP socket %d -> Ethernet (ip %s, port %d)\n",
+			       links[i].sock_rx, links[i].sock_tx, inet_ntop(AF_INET, &(links[i].addr.sin_addr),
+						 str, INET_ADDRSTRLEN), htons(links[i].addr.sin_port));
+		}
+	}
+	printf("\n");
+}
+
+
+void close_all_sockets(struct link links[], int size){
+	int sock_tx_udp_open = 1;
+	for (int i=0; i<size; ++i){
+		if (links[i].type == UDP_CAN){
+			close(links[i].sock_rx); //close UDP sockets corresponding to devices
+		}
+		else{
+			close(links[i].sock_rx); //close CAN sockets corresponding to CAN interfaces
+			//close UDP socket responsible to sending data outside only once
+			if (sock_tx_udp_open){
+				close(links[i].sock_tx);
+				sock_tx_udp_open = 0;
+			}
+		}
+	}
+}
+
