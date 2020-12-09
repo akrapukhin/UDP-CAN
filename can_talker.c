@@ -52,10 +52,10 @@ int main(int argc, char *argv[]) {
   timer_test.tv_sec = 0;
   timer_test.tv_nsec = 0;
   if (argc == 6 && strcmp(argv[3], "waitfor") == 0) {
-		timer_test.tv_sec = argv[4][0] - '0';
-		timer_test.tv_nsec = argv[5][0] - '0';
-		printf("wait each cycle for %lds %ldns\n", timer_test.tv_sec, timer_test.tv_nsec);
-	}
+    timer_test.tv_sec = argv[4][0] - '0';
+    timer_test.tv_nsec = argv[5][0] - '0';
+    printf("wait each cycle for %lds %ldns\n", timer_test.tv_sec, timer_test.tv_nsec);
+  }
 
   unsigned int mes_counter = 0;
 
@@ -84,9 +84,9 @@ int main(int argc, char *argv[]) {
     if (mes_counter > 4294967290) {mes_counter = 0;}
 
     //wait if necessary
-		if (argc == 6 && strcmp(argv[3], "waitfor") == 0) {
-		  nanosleep(&timer_test, &tim);
-		}
+    if (argc == 6 && strcmp(argv[3], "waitfor") == 0) {
+      nanosleep(&timer_test, &tim);
+    }
   }
 
   close(sockfd);
