@@ -1,5 +1,27 @@
 /*
-** listener.c -- a datagram sockets "server" demo
+** converter.c udp-can converter.
+** Receives UDP datagrams, processes them and sends to CAN interfaces.
+**
+** В тестовом задании написано, что есть несколько интерфейсов CAN, и каждому 
+** устройству соответствует определенный приемный UDP-порт. Как я понял, под 
+** "устройством" здесь понимается какой-либо контроллер или датчик, подключенный
+** к CAN-шине, а не сам интерфейс. То есть каждый интерфейс подключен к своей 
+** CAN-шине, а к CAN-шине могут быть подключены несколько устройств. Конвертер 
+** получает какое-то сообщение на определенный порт, соответствующий конкретному
+** устройству, обрабатывает его и посылает на соответствующую CAN-шину, к которой
+** подключено устройство. Сообщение при этом видят все устройства, подключенные к 
+** шине. Таким образом, количество UDP-портов равно количеству устройств. Я нарисовал
+** небольшую схему, ее можно посмотреть в файле sketch.png. Если же я неправильно 
+** понял, и количество портов равно количеству CAN-интерфейсов, то код легко 
+** поправить в таком случае. Кроме того, в коде для простоты два интерфейса и одно 
+** устройство на каждом, поэтому в данном случае разницы нет. 
+**
+** Также из задания не совсем понятно, соответствует ли всем CAN-интерфейсам один 
+** ip/port, на который отсылаются сообщения, или же информация с каждого CAN-интерфейса 
+** посылается на свой ip/port. Я при выполнении задания предполагал, что информация со
+** всех CAN-интерфейсов передается на один ip/port. Опять же, это легко поправить, если 
+** необходимо использовать свой ip/port для каждого CAN-интерфейса.
+** 
 */
 
 #include <stdio.h>
@@ -7,12 +29,12 @@
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
+#include <stdbool.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
-#include <limits.h>
 
 #include <net/if.h>
 #include <sys/ioctl.h>
@@ -20,311 +42,549 @@
 #include <linux/can.h>
 #include <linux/can/raw.h>
 
+#include <pthread.h>
 #include <poll.h>
 
-#define MYPORT0 "4950"	// the port users will be connecting to
-#define MYPORT1 "4951"
-#define ETHPORT "4952"
+//one receiving UDP-port for each device (define new ports here to add new devices)
+#define MYPORT0 4950
+#define MYPORT1 4951
+
+//data from all CAN interfaces is sent to this ip address and port
+#define IPADDR "127.0.0.1" //loopback for testing
+#define ETHPORT 4952
+
+//type of connection (from Ethernet to CAN or vice versa)
+#define UDP_CAN 0
+#define CAN_UDP 1
+
+//number of CAN interfaces
+#define NUM_CAN 2
+
+//number of devices connected to CAN interfaces
+#define NUM_DEV 2
+
+//for testing (number of messages to receive before computing results)
 #define CYCLES 100000
-//#define IPADDR "192.168.1.6"
-#define IPADDR "127.0.0.1"
 
-//#define MAXBUFLEN 100
 
-// get sockaddr, IPv4 or IPv6:
-void *get_in_addr(struct sockaddr *sa)
-{
-	if (sa->sa_family == AF_INET) {
-		return &(((struct sockaddr_in*)sa)->sin_addr);
+/*
+** Each device has an associated UDP port and a udp socket listening to this port.
+** Data read from this socket is written to a CAN socket corresponding to a
+** specific CAN interface to which the device is connected to.
+**
+** When data flows from CAN to Ethernet, the process is similar. A corresponding
+** CAN socket is listening to a specific CAN interface. Data is then written to
+** a UDP socket and sent to a specified address (ip and port)
+**
+** Both of these relationships are captured by the struct link defined below.
+**
+** @sock_rx - socket receiving data from Ethernet or from CAN
+** @sock_tx - socket sending data to Ethernet or to CAN
+** @type - UDP_CAN or CAN_UDP - from Ethernet to CAN or vice versa
+** @addr - destination address (ip and port for canudp links) or receiving
+**         address (for udpcan links)
+*/
+struct link {
+	int sock_rx;
+	int sock_tx;
+	int type;
+	struct sockaddr_in addr;
+};
+
+
+/*
+** Creates all canudp links
+** Data from all CAN interfaces is sent to a single address, so the sock_tx
+** socket in all corresponding links is the same.
+
+** @can_sockets[] - array of socket descriptors, one for each CAN interface
+** @size - size of the array
+** @canudp_links[] - array of links which is filled by the function
+** @ip_address - destination ip address
+** @port_num - specific port on the destination address
+*/
+void make_canudp_links(int can_sockets[], int size, struct link canudp_links[], const char *ip_address, int port_num);
+
+
+/*
+** Creates a udpcan link between a port and a CAN interface for each device.
+** Each device has a separate unique port. The link is made between this port
+** and a CAN socket corresponding to the CAN interface to which the device is
+** connected to. This CAN socket may be not unique because multiple devices can
+** be connected to the same CAN bus.
+**
+** @port_num - port dedicated to a device
+** @can_socket - CAN socket corresponding to the CAN interface
+**
+** returns:
+** a udpcan link
+*/
+struct link make_udpcan_link(int port_num, int can_socket);
+
+
+/*
+** connects to a CAN interface.
+** Here virtual CAN interfaces are used for testing.
+** Interfaces must be initialized before running. Example initializing vcan0:
+** sudo modprobe vcan
+** sudo ip link add dev vcan0 type vcan
+** sudo ip link set up vcan0
+**
+** @ifname - name of the CAN interface
+**
+** returns:
+** a file descriptor of the CAN socket bound to the interface.
+*/
+int connect_to_can(const char *ifname);
+
+
+/*
+** each link is processed by a separate pthread.
+**
+** There can be problems with using threads for each link, as
+** the threads can read and write from/to the same sockets if 
+** links are created that way. For example, two threads can read data
+** from different UDP socket and then use the same CAN socket to send it.
+** Another example: Data from CAN can be read by different CAN sockets but
+** then sent to the same UDP socket. From what I've read, however, it seems
+** that UDP and CAN sockets can be used in such a way with no problems, as
+** read/write operations in this case are atomic and thread-safe. Also, I 
+** didn't run into such issues while testing this function. However, these 
+** possible  problems can be avoided if links are created in main() in such 
+** a way that all sockets in them are unique. The function itself doesn't 
+** need any modification.
+** 
+** An alternative to using pthreads which does not have these possible problems
+** is to use poll() or select() functions. Function using poll() is declared and
+** implemented below.
+** 
+** @link_ptr - pointer to struct link
+*/
+void *process_link_pthread(void *link_ptr);
+
+
+/*
+** process all links by polling listening rx sockets in links
+*/
+void process_links_poll(struct link links[], int size);
+
+
+/*
+** combines two arrays of links into one
+*/
+void unite_links(struct link canudp_links[], struct link udpcan_links[], struct link united_links[], int canudp_size, int udpcan_size);
+
+
+/*
+** prints info about all links
+*/
+void print_links(struct link links[], int size);
+
+
+/*
+** close all sockets found in links
+*/
+void close_all_sockets(struct link links[], int size);
+
+
+/*
+** main function
+*/
+int main(int argc, char *argv[]){
+  if (argc < 2) {
+		fprintf(stderr,"usage: converter mode\n");
+		printf("mode is either 'pthread' or 'poll'\n");
+		exit(1);
 	}
 
-	return &(((struct sockaddr_in6*)sa)->sin6_addr);
+  //two modes, pthread or poll
+	if (!(strcmp(argv[1], "pthread") == 0 || strcmp(argv[1], "poll") == 0)){
+		fprintf(stderr,"unknown mode %s; should be 'pthread' or 'poll'\n", argv[1]);
+		exit(1);
+	}
+	printf("mode: %s\n", argv[1]);
+
+  //total number of links
+	int num_links = NUM_CAN + NUM_DEV;
+
+	//connect to CAN interfaces (virtual vcan interfaces are used here)
+	int can_sockets[NUM_CAN];
+	printf("\nCAN interfaces:\n");
+	can_sockets[0] = connect_to_can("vcan0");
+	can_sockets[1] = connect_to_can("vcan1");
+
+	//create canudp links (from CAN to Ethernet), one for each CAN interface
+	struct link canudp_links[NUM_CAN];
+	make_canudp_links(can_sockets, NUM_CAN, canudp_links, IPADDR, ETHPORT);
+
+	//create udpcan links (from Ethernet to CAN), one for each device
+	struct link udpcan_links[NUM_DEV];
+	udpcan_links[0] = make_udpcan_link(MYPORT0, can_sockets[0]);
+	udpcan_links[1] = make_udpcan_link(MYPORT1, can_sockets[1]);
+
+  //unite links for convenience
+	struct link all_links[num_links];
+	unite_links(canudp_links, udpcan_links, all_links, NUM_CAN, NUM_DEV);
+
+  //print info
+	print_links(all_links, num_links);
+
+  //run links
+	if (strcmp(argv[1], "pthread") == 0){ //thread mode
+		//create threads
+		pthread_t threads[num_links];
+		int result_code;
+		for (int t = 0; t < num_links; t++){
+			result_code = pthread_create(&threads[t], NULL, process_link_pthread, &all_links[t]);
+			if (result_code){
+				printf("ERROR; return code from pthread_create() is %d\n", result_code);
+				exit(1);
+			}
+		}
+
+		//wait for all threads
+		for (int t = 0; t < num_links; t++) {
+			pthread_join(threads[t], NULL);
+		}
+	}
+	else { //poll mode
+		process_links_poll(all_links, num_links);
+	}
+
+	close_all_sockets(all_links, num_links);
+	return 0;
 }
 
-int main(void)
+
+void make_canudp_links(int can_sockets[], int size, struct link canudp_links[], const char *ip_address, int port_num){
+	//ip address and port
+	struct sockaddr_in addr;
+	int sock_descr;
+	addr.sin_family = AF_INET; //AF_INET6 for ipv6
+	addr.sin_port = htons(port_num); //host-to-network (if host is little endian)
+	inet_pton(AF_INET, ip_address, &(addr.sin_addr));
+	if ((sock_descr = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
+		perror("can_socket: socket");
+	}
+
+	//fill in all links
+	for (int i = 0; i < size; ++i) {
+		canudp_links[i].sock_rx = can_sockets[i];
+		canudp_links[i].sock_tx = sock_descr;
+		canudp_links[i].type = CAN_UDP;
+		canudp_links[i].addr = addr;
+	}
+}
+
+
+void *process_link_pthread(void *link_ptr)
 {
+	//data from link
+	int sock_in = ((struct link*)link_ptr)->sock_rx;
+	int sock_out = ((struct link*)link_ptr)->sock_tx;
+	int stype = ((struct link*)link_ptr)->type;
+	struct sockaddr_in addr = ((struct link*)link_ptr)->addr;
 
-	int sockfd0, sockfd1, sock_eth;
-	struct addrinfo hints, *servinfo, *p;
-	int rv;
-	int numbytes;
+	struct can_frame frame_received, frame_tosend;
+
+	//address of a sender filled by recvfrom()
 	struct sockaddr_storage their_addr;
-	//char buf[MAXBUFLEN];
-	struct can_frame frame_eth;
 	socklen_t addr_len;
-	char s[INET6_ADDRSTRLEN];
-
-	memset(&hints, 0, sizeof hints);
-	hints.ai_family = AF_INET; // set to AF_INET to use IPv4
-	hints.ai_socktype = SOCK_DGRAM;
-	hints.ai_flags = AI_PASSIVE; // use my IP
-
-  //0
-	if ((rv = getaddrinfo(NULL, MYPORT0, &hints, &servinfo)) != 0) {
-		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-		return 1;
-	}
-	// loop through all the results and bind to the first we can
-	for(p = servinfo; p != NULL; p = p->ai_next) {
-		if ((sockfd0 = socket(p->ai_family, p->ai_socktype,
-				p->ai_protocol)) == -1) {
-			perror("listener: socket");
-			continue;
-		}
-		if (bind(sockfd0, p->ai_addr, p->ai_addrlen) == -1) {
-			close(sockfd0);
-			perror("listener: bind");
-			continue;
-		}
-
-		break;
-	}
-	if (p == NULL) {
-		fprintf(stderr, "listener: failed to bind socket\n");
-		return 2;
-	}
-
-	//1
-	if ((rv = getaddrinfo(NULL, MYPORT1, &hints, &servinfo)) != 0) {
-		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-		return 1;
-	}
-	// loop through all the results and bind to the first we can
-	for(p = servinfo; p != NULL; p = p->ai_next) {
-		if ((sockfd1 = socket(p->ai_family, p->ai_socktype,
-				p->ai_protocol)) == -1) {
-			perror("listener: socket");
-			continue;
-		}
-		if (bind(sockfd1, p->ai_addr, p->ai_addrlen) == -1) {
-			close(sockfd1);
-			perror("listener: bind");
-			continue;
-		}
-
-		break;
-	}
-	if (p == NULL) {
-		fprintf(stderr, "listener: failed to bind socket\n");
-		return 2;
-	}
-
-	//2
-	if ((rv = getaddrinfo(IPADDR, ETHPORT, &hints, &servinfo)) != 0) {
-		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-		return 1;
-	}
-	// loop through all the results and bind to the first we can
-	for(p = servinfo; p != NULL; p = p->ai_next) {
-		if ((sock_eth = socket(p->ai_family, p->ai_socktype,
-				p->ai_protocol)) == -1) {
-			perror("listener: socket");
-			continue;
-		}
-
-
-		break;
-	}
-	if (p == NULL) {
-		fprintf(stderr, "listener: failed to bind socket\n");
-		return 2;
-	}
-
-	freeaddrinfo(servinfo);
-
-	printf("listener: waiting to recvfrom...\n");
-
-	// Start off with room for 5 connections
-	// (We'll realloc as necessary)
-	int fd_count = 4;
-	int fd_size = 5;
-	struct pollfd *pfds = malloc(sizeof *pfds * fd_size);
-
-	// Add the sockets to set
-	pfds[0].fd = sockfd0;
-	pfds[0].events = POLLIN;
-	pfds[1].fd = sockfd1;
-	pfds[1].events = POLLIN;
-
 	addr_len = sizeof their_addr;
 
+	//number of bytes sent/received. If it's not equal to sizeof(struct can_frame),
+	//the packet can be sent again (not implemented here)
+	int numbytes;
 
-  //CAN sockets
-	int sc0, sc1;
-	int nbytes;
-	struct sockaddr_can addr0, addr1;
-	struct can_frame frame, frame_input;
-	struct ifreq ifr0, ifr1;
-	const char *ifname0 = "vcan0";
-	const char *ifname1 = "vcan1";
+	//for testing
+	unsigned int memo = 0;
+	unsigned int errors = 0;
+	unsigned int counters = 0;
+	float results = 0;
+	bool results_printed = 0;
 
-	//0
-	if((sc0 = socket(PF_CAN, SOCK_RAW, CAN_RAW)) == -1) {
-			perror("Error while opening socket");
-			return -1;
-	}
-	strcpy(ifr0.ifr_name, ifname0);
-	ioctl(sc0, SIOCGIFINDEX, &ifr0);
-	addr0.can_family  = AF_CAN;
-	addr0.can_ifindex = ifr0.ifr_ifindex;
-	printf("%s at index %d\n", ifname0, ifr0.ifr_ifindex);
-	if(bind(sc0, (struct sockaddr *)&addr0, sizeof(addr0)) == -1) {
-			perror("Error in socket bind");
-			return -2;
-	}
+	for(;;){
+		//receive data
+		if ((numbytes = recvfrom(sock_in, &frame_received, sizeof(struct can_frame) , 0,
+		(struct sockaddr *)&their_addr, &addr_len)) == -1) {
+			perror("recvfrom");
+			exit(1);
+		}
 
-	//1
-	if((sc1 = socket(PF_CAN, SOCK_RAW, CAN_RAW)) == -1) {
-			perror("Error while opening socket");
-			return -1;
-	}
-	strcpy(ifr1.ifr_name, ifname1);
-	ioctl(sc1, SIOCGIFINDEX, &ifr1);
-	addr1.can_family  = AF_CAN;
-	addr1.can_ifindex = ifr1.ifr_ifindex;
-	printf("%s at index %d\n", ifname1, ifr1.ifr_ifindex);
-	if(bind(sc1, (struct sockaddr *)&addr1, sizeof(addr1)) == -1) {
-			perror("Error in socket bind");
-			return -2;
-	}
+		//for testing
+		if (frame_received.can_id - memo > 1){
+			errors++;
+		}
+		memo = frame_received.can_id;
 
-	int can_sockets[2];
-	unsigned int memo[4];
-	unsigned int errors[4];
-	unsigned int counters[4];
-	unsigned int first_vals[4] = {0};
-	float results[4];
-	memo[0] = 0;
-	memo[1] = 0;
-	memo[2] = 0;
-	memo[3] = 0;
-	errors[0] = 0;
-	errors[1] = 0;
-	errors[2] = 0;
-	errors[3] = 0;
-	counters[0] = 0;
-	counters[1] = 0;
-	counters[2] = 0;
-	counters[3] = 0;
-	results[0] = 0;
-	results[1] = 0;
-	results[2] = 0;
-	results[3] = 0;
-
-	can_sockets[0] = sc0;
-	can_sockets[1] = sc1;
-
-	pfds[2].fd = sc0;
-	pfds[2].events = POLLIN;
-	pfds[3].fd = sc1;
-	pfds[3].events = POLLIN;
-
-	int results_printed = 0;
-
-	//////////////// POLL LOOP ///////////////////////////////
-	// Main loop
-	for(;;) {
-			int poll_count = poll(pfds, fd_count, -1);
-
-			if (poll_count == -1) {
-					perror("poll");
-					exit(1);
+		//some processing can be done with the received data. Here source of the
+		//frame is specified in frame_tosend.data[0] and destination in
+		//frame_tosend.data[1]. data[2] and can_id are taken from the frame_received
+		//and left unchanged. This is done for testing purposes.
+		if (stype==UDP_CAN){
+			frame_tosend.can_id  = frame_received.can_id;
+			frame_tosend.can_dlc = 3;
+			frame_tosend.data[0] = 'c'; //c - converter 63
+			frame_tosend.data[1] = 'b'; //b - bus 62
+			frame_tosend.data[2] = frame_received.data[2];
+			numbytes = send(sock_out, &frame_tosend, sizeof(struct can_frame), 0);
+			if (numbytes == -1) {
+			  perror("converter: send");
+			  exit(1);
 			}
+		}
+		else if (stype==CAN_UDP){
+			frame_tosend.can_id  = frame_received.can_id;
+			frame_tosend.can_dlc = 3;
+			frame_tosend.data[0] = 'c'; //c - converter 63
+			frame_tosend.data[1] = 'e'; //e - ethernet 65
+			frame_tosend.data[2] = frame_received.data[2];
+			numbytes = sendto(sock_out, &frame_tosend, sizeof(struct can_frame), 0, (struct sockaddr*)&addr, sizeof addr);
+			if (numbytes == -1) {
+				perror("converter: sendto");
+				exit(1);
+			}
+		}
+		else{
+			perror("unknown link type");
+			exit(1);
+		}
 
-			// Run through the existing connections looking for data to read
-			for(int i = 0; i < fd_count; i++) {
-					// Check if someone's ready to read
-					if (pfds[i].revents & POLLIN) { // We got one!!
-						// If not the listener, we're just a regular client
-						if ((numbytes = recvfrom(pfds[i].fd, &frame_eth, sizeof(struct can_frame) , 0,
-							(struct sockaddr *)&their_addr, &addr_len)) == -1) {
-							perror("recvfrom");
-							exit(1);
-						}
+    //print if signal from testbench says so
+		if(frame_received.data[3]){
+			printf("%d %c %c %d -> %d %c %c %d\n", frame_received.can_id, frame_received.data[0], frame_received.data[1], frame_received.data[2],
+																						 frame_tosend.can_id, frame_tosend.data[0], frame_tosend.data[1], frame_tosend.data[2]);
+		}
 
-						//printf("listener: got packet from %s\n",
-						//	inet_ntop(their_addr.ss_family,
-						//		get_in_addr((struct sockaddr *)&their_addr),
-						//		s, sizeof s));
-						//printf("listener: packet is %d bytes long\n", numbytes);
-						//buf[numbytes] = '\0';
-
-
-
-						if (frame_eth.can_id - memo[i] > 1)
-						{
-							errors[i]++;
-						  //printf("%d ooooooooooooooooooooooooooo buf: %d, memo: %d\n",i, *buf, memo[i]);
-						}
-						memo[i] = frame_eth.can_id;
-						//printf("%d %d %c %c %c %d %d %d %d\n", i, frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2], errors[0], errors[1], errors[2], errors[3]);
-						//printf("%d %d %c %c %c\n", i, frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2]);
-						//printf("%d %d %d %d\n", counters[0], counters[1], counters[2], counters[3]);
-
-            if (i<=1)
-						{
-							frame.can_id  = frame_eth.can_id;
-							frame.can_dlc = 3;
-							frame.data[0] = 0x63; //c - converter
-							frame.data[1] = 0x62; //b - bus
-							if (i == 0){
-								frame.data[2] = 0x30; //vcan0
-							}
-							else{
-								frame.data[2] = 0x31; //vcan1
-							}
-
-							//nbytes = write(s, &frame, sizeof(struct can_frame));
-							nbytes = send(can_sockets[i], &frame, sizeof(struct can_frame), 0);
-							//printf("Wrote %d bytes, out of %lu bytes\n", nbytes, sizeof(struct can_frame));
-						}
-						else
-						{
-							frame.can_id  = frame_eth.can_id;
-							frame.can_dlc = 3;
-							frame.data[0] = 0x63; //c - converter
-							frame.data[1] = 0x65; //e - ethernet
-							if (i == 2){
-								frame.data[2] = 0x30; //vcan0
-							}
-							else{
-								frame.data[2] = 0x31; //vcan1
-							}
-
-							if ((nbytes = sendto(sock_eth, &frame, sizeof(struct can_frame), 0, p->ai_addr, p->ai_addrlen)) == -1) {
-								perror("talker: sendto1");
-								exit(1);
-							}
-							//printf("%d %d %d %d\n", frame_eth.can_id, frame_eth.data[0], frame_eth.data[1], frame_eth.data[2]);
-						}
-
-						if (counters[i] == 0){first_vals[i] = frame_eth.can_id;}
-
-						counters[i]++;
-						if (counters[i] > CYCLES && results[i] == 0.0){
-							results[i] = (float)counters[i] / (float)(frame_eth.can_id);// - first_vals[i]);
-							printf("%d %d %d/%d\n", i, frame_eth.can_id, counters[i], frame_eth.can_id);
-						}
-
-						if (results[0]>0 && results[1]>0 && results[2]>0 && results[3]>0 && results_printed == 0){
-						//if (results[0]>0 && results[1]>0 && results_printed == 0){
-							printf("eth_talker0-converter %f\n", results[0]);
-							printf("eth_talker1-converter %f\n", results[1]);
-							printf("can_talker0-converter %f\n", results[2]);
-							printf("can_talker1-converter %f\n", results[3]);
-							results_printed = 1;
-						}
+		//for testing (compute results if enough messages were received)
+		counters++;
+		if (counters > CYCLES && results == 0.0){
+			results = (float)counters / (float)(frame_received.can_id);
+		}
+		if (results>0 && !results_printed){
+      printf("%d->%d %d %f (fraction of messages received)\n", sock_in, sock_out, stype, results);
+			results_printed = true;
+		}
+	} //end for(;;). Probably need to specify condition on which the infinite loop exits
+	pthread_exit(NULL);
+}
 
 
-					} // END got ready-to-read from poll()
-			} // END looping through file descriptors
-	} // END for(;;)--and you thought it would never end!
-	//////////////// POLL LOOP ///////////////////////////////
+int connect_to_can(const char *ifname){
+  //create CAN socket
+	int sock_can_descr;
+	struct ifreq ifr;
+	struct sockaddr_can addr;
+	if((sock_can_descr = socket(PF_CAN, SOCK_RAW, CAN_RAW)) == -1) {
+		perror("Error while opening socket");
+		exit(1);
+	}
+	strcpy(ifr.ifr_name, ifname);
+	ioctl(sock_can_descr, SIOCGIFINDEX, &ifr);
+	addr.can_family  = AF_CAN;
+	addr.can_ifindex = ifr.ifr_ifindex;
+	
+	//bind socket to CAN interface
+	if(bind(sock_can_descr, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+		perror("Error in socket bind");
+		exit(1);
+	}
+	printf("CAN socket %d is bound to CAN interface %s at index %d\n", sock_can_descr, ifname, ifr.ifr_ifindex);
+	return sock_can_descr;
+}
 
-	close(sockfd0);
-	close(sockfd1);
-	close(sc0);
-	close(sc1);
 
-	return 0;
+struct link make_udpcan_link(int port_num, int can_socket){
+	//fill in address
+	struct sockaddr_in addr;
+	int sock_descr;
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(port_num);
+	addr.sin_addr.s_addr = INADDR_ANY; //set to the host ip
+	if ((sock_descr = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
+		perror("make_udpcan_link: socket");
+	}
+
+	//bind socket to port
+	if (bind(sock_descr, (struct sockaddr*)&addr, sizeof addr) == -1) {
+		close(sock_descr);
+		perror("make_udpcan_link: bind");
+	}
+
+	//create link
+	struct link res = {sock_descr, can_socket, UDP_CAN, addr};
+	return res;
+}
+
+
+void unite_links(struct link canudp_links[], struct link udpcan_links[], struct link united_links[], int canudp_size, int udpcan_size){
+	for (int i=0; i<udpcan_size; ++i){
+		united_links[i] = udpcan_links[i];
+	}
+	for (int i=0; i<canudp_size; ++i){
+		united_links[udpcan_size + i] = canudp_links[i];
+	}
+}
+
+
+void print_links(struct link links[], int size){
+	char str[INET_ADDRSTRLEN];
+	printf("\nLinks:\n");
+	for (int i=0; i<size; ++i){
+		if (links[i].type == UDP_CAN){
+			printf("Ethernet -> UDP socket %d (port %d) -> CAN socket %d -> CAN interface\n",
+			       links[i].sock_rx, htons(links[i].addr.sin_port), links[i].sock_tx);
+		}
+		else{
+			printf("CAN interface -> CAN socket %d -> UDP socket %d -> Ethernet (ip %s, port %d)\n",
+			       links[i].sock_rx, links[i].sock_tx, inet_ntop(AF_INET, &(links[i].addr.sin_addr),
+						 str, INET_ADDRSTRLEN), htons(links[i].addr.sin_port));
+		}
+	}
+	printf("\n");
+}
+
+
+void close_all_sockets(struct link links[], int size){
+	int sock_tx_udp_open = 1;
+	for (int i=0; i<size; ++i){
+		if (links[i].type == UDP_CAN){
+			close(links[i].sock_rx); //close UDP sockets corresponding to devices
+		}
+		else{
+			close(links[i].sock_rx); //close CAN sockets corresponding to CAN interfaces
+			//close UDP socket responsible to sending data outside only once
+			if (sock_tx_udp_open){
+				close(links[i].sock_tx);
+				sock_tx_udp_open = 0;
+			}
+		}
+	}
+}
+
+
+void process_links_poll(struct link links[], int size){
+	//array of file descriptors to poll
+	struct pollfd *pfds = malloc(sizeof *pfds * size);
+
+	//fill in the array
+	for (int i = 0; i < size; ++i){
+		pfds[i].fd = links[i].sock_rx;
+		pfds[i].events = POLLIN;
+	}
+
+	struct can_frame frame_received, frame_tosend;
+
+	//address of a sender filled by recvfrom()
+	struct sockaddr_storage their_addr;
+	socklen_t addr_len;
+	addr_len = sizeof their_addr;
+
+	//number of bytes sent/received. If it's not equal to sizeof(struct can_frame),
+	//the packet can be sent again (not implemented here)
+	int numbytes;
+
+	//for testing
+	unsigned int memo[size];
+	memset(memo, 0, size*sizeof(int));
+	unsigned int errors[size];
+	memset(errors, 0, size*sizeof(int));
+	unsigned int counters[size];
+	memset(counters, 0, size*sizeof(int));
+	float results[size];
+	memset(results, 0, size*sizeof(float));
+	bool results_computed[size];
+	memset(results_computed, false, size*sizeof(bool));
+	bool all_results_ready = false;
+	bool results_printed = false;
+
+	for(;;) {
+		int poll_count = poll(pfds, size, -1);
+
+		if (poll_count == -1) {
+			perror("poll");
+			exit(1);
+		}
+
+		//look for data to read
+		for(int i = 0; i < size; i++) {
+			// Check if someone's ready to read
+			if (pfds[i].revents & POLLIN) { //data available for read from pfds[i]
+				//receive data
+				if ((numbytes = recvfrom(pfds[i].fd, &frame_received, sizeof(struct can_frame) , 0,
+				(struct sockaddr *)&their_addr, &addr_len)) == -1) {
+					perror("recvfrom");
+					exit(1);
+				}
+
+				//for testing
+				if (frame_received.can_id - memo[i] > 1){
+					errors[i]++;
+				}
+				memo[i] = frame_received.can_id;
+
+				//some processing can be done with the received data. Here source of the
+				//frame is specified in frame_tosend.data[0] and destination in
+				//frame_tosend.data[0]. data[2] and can_id are taken from the frame_received
+				//and left unchanged. This is done for testing purposes.
+				if (links[i].type==UDP_CAN){
+					frame_tosend.can_id  = frame_received.can_id;
+					frame_tosend.can_dlc = 3;
+					frame_tosend.data[0] = 'c'; //c - converter 63
+					frame_tosend.data[1] = 'b'; //b - bus 62
+					frame_tosend.data[2] = frame_received.data[2];
+					numbytes = send(links[i].sock_tx, &frame_tosend, sizeof(struct can_frame), 0);
+					if (numbytes == -1) {
+						perror("converter: send");
+						exit(1);
+					}
+				}
+				else if (links[i].type==CAN_UDP){
+					frame_tosend.can_id  = frame_received.can_id;
+					frame_tosend.can_dlc = 3;
+					frame_tosend.data[0] = 'c'; //c - converter 63
+					frame_tosend.data[1] = 'e'; //e - ethernet 65
+					frame_tosend.data[2] = frame_received.data[2];
+					numbytes = sendto(links[i].sock_tx, &frame_tosend, sizeof(struct can_frame), 0, (struct sockaddr*)&links[i].addr, sizeof links[i].addr);
+					if (numbytes == -1) {
+						perror("converter: sendto");
+						exit(1);
+					}
+				}
+				else{
+					perror("unknown link type");
+					exit(1);
+				}
+
+        //print if signal from testbench says so
+				if(frame_received.data[3]){
+					printf("%d %c %c %d -> %d %c %c %d\n", frame_received.can_id, frame_received.data[0], frame_received.data[1], frame_received.data[2],
+																								 frame_tosend.can_id, frame_tosend.data[0], frame_tosend.data[1], frame_tosend.data[2]);
+				}
+
+				//for testing (compute results if enough messages were received)
+				counters[i]++;
+				if (counters[i] > CYCLES && results_computed[i] == false){
+					results[i] = (float)counters[i] / (float)(frame_received.can_id);
+					results_computed[i] = true;
+				}
+				int r;
+				all_results_ready = true;
+				for (r=0; r < size; r++){
+					if (!results_computed[r]){
+						all_results_ready = false;
+						break;
+					}
+				}
+				if (all_results_ready && !results_printed){
+          printf("fraction of messages received:\n");
+					for (r = 0; r < size; r++){
+						printf("%d->%d %d %f\n", links[r].sock_rx, links[r].sock_tx, links[r].type, results[r]);
+					}
+					results_printed = true;
+				}
+			} //end if (pfds[i].revents & POLLIN)
+		} //end for(int i = 0; i < size; i++)
+	} //end for(;;)
+	free(pfds);
 }

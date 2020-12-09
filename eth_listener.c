@@ -124,8 +124,9 @@ int main(int argc, char *argv[])
 			}
 		}
 		if (all_results_ready && !results_printed) {
+                        printf("fraction of messages received:\n");
 			for (r = 0; r < size; r++) {
-				printf("%d->port%s %f %d\n", r, PORT, results[r], errors[r]);
+				printf("vcan%d->port%s %f\n", r, PORT, results[r]);
 			}
 			results_printed = true;
 		}

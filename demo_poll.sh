@@ -1,5 +1,5 @@
 #!/bin/sh
-gnome-terminal --title="pconverter_bug" -- "./pconverter_bug" pthread
+gnome-terminal --title="converter" -- "./converter" poll
 gnome-terminal --title="eth_talker 4950" -- "./eth_talker" 4950 print waitfor 1 0
 gnome-terminal --title="eth_talker 4951" -- "./eth_talker" 4951 print waitfor 1 0
 gnome-terminal --title="eth_listener" -- "./eth_listener" 2 print

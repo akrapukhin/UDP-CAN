@@ -39,7 +39,6 @@ int main(int argc, char *argv[]) {
 	}
 
 	for (p = servinfo; p != NULL; p = p->ai_next) {
-		printf("%d\n", p->ai_family);
 		if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
 				perror("eth_talker: socket");
 				continue;

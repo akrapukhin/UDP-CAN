@@ -126,12 +126,13 @@ int main(int argc, char *argv[]) {
       all_results_ready = false;
     }
     if (all_results_ready && !results_printed) {
+      printf("fraction of messages received:\n");
       for (r = 0; r < size; r++){
         if(results_computed[r]) {
-          printf("converter %d->listener %s %f %d\n", r, argv[1], results[r], errors[r]);
+          printf("converter %d->listener %s %f\n", r, argv[1], results[r]);
         }
       }
-      printf("can_talker %s->listener %s %f %d\n", argv[1], argv[1], results[size], errors[size]);
+      printf("can_talker %s->listener %s %f\n", argv[1], argv[1], results[size]);
       results_printed = true;
     }
   }
