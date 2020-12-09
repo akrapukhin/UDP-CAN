@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include <net/if.h>
 #include <sys/types.h>
@@ -17,17 +18,17 @@
 
 int main(int argc, char *argv[])
 {
+
+  if (argc < 4) {
+    fprintf(stderr,"usage: can_listener can_interface num_dev_total num_dev_interface [print]\n");
+    exit(1);
+  }
+
     int s;
     int numbytes;
     struct sockaddr_can addr;
     struct can_frame frame;
     struct ifreq ifr;
-
-    if (argc < 2) {
-      fprintf(stderr,"usage: talker can_interface [print]\n");
-      exit(1);
-    }
-
     const char *ifname = argv[1];
 
     if((s = socket(PF_CAN, SOCK_RAW, CAN_RAW)) == -1) {
@@ -48,69 +49,83 @@ int main(int argc, char *argv[])
         return -2;
     }
 
-    struct timespec timer_test, tim;
-  	timer_test.tv_sec = 0;
-  	//timer_test.tv_nsec = 999999999;
-    timer_test.tv_nsec = 0;
+    int size = argv[2][0] - '0';
 
-    unsigned int mes_counter = 0;
-    unsigned char data0 = 0;
+    int num_dev = argv[3][0] - '0';
 
+  	//arrays necessary to compute results
+  	unsigned int memo[size+1];
+  	memset(memo, 0, (size+1)*sizeof(int));
+  	unsigned int errors[size+1];
+  	memset(errors, 0, (size+1)*sizeof(int));
+  	unsigned int counters[size+1];
+  	memset(counters, 0, (size+1)*sizeof(int));
+  	float results[size+1];
+  	memset(results, 0, (size+1)*sizeof(float));
+  	bool results_computed[size+1];
+  	memset(results_computed, false, (size+1)*sizeof(bool));
+  	bool all_results_ready = false;
+  	bool results_printed = false;
 
-    unsigned int memo = 0;
-    unsigned int errors = 0;
-    unsigned int counters[2] = {0};
-    unsigned int first_vals[2] = {0};
-    float results[2] = {0};
+  	printf("\n\n\n");
     while(1){
       if ((numbytes = recv(s, &frame, sizeof(struct can_frame), 0)) == -1) {
         perror("talker: sendto");
         exit(1);
       }
 
-      if (frame.can_id - memo > 1)
-      {
-        errors++;
-        //printf("%d ooooooooooooooooooooooooooo buf: %d, memo: %d\n",i, *buf, memo[i]);
-      }
-      memo = frame.can_id;
-      //printf("%d %d\n", counters[0], counters[1]);
-      if (argc >= 3 && strcmp(argv[2], "print") == 0){
-        printf("%d %c %c %d\n", counters[0], frame.data[0], frame.data[1], frame.data[2]);
+      if (argc >= 4 && strcmp(argv[3], "print") == 0){
+        printf("%d %c %c %d\n", frame.can_id, frame.data[0], frame.data[1], frame.data[2]);
       }
 
-  	  //nanosleep(&timer_test, &tim);
+      if (frame.data[0] == 0x63){ //data from converter
+        int source_converter = (int)frame.data[2];
+        counters[source_converter]++;
 
-      if (frame.data[0] == 0x63){
-        if (counters[0] == 0){first_vals[0] = frame.can_id;}
-        counters[0]++;
+
+        if (frame.can_id - memo[source_converter] > 1){
+          errors[source_converter]++;
+        }
+        if (counters[source_converter] > CYCLES && !results_computed[source_converter]){
+          results[source_converter] = (float)counters[source_converter] / (float)(frame.can_id);
+          results_computed[source_converter] = true;
+        }
       }
       else if (frame.data[0] == 0x74){
-        if (counters[1] == 0){first_vals[1] = frame.can_id;}
-        counters[1]++;
+        counters[size]++;
+        if (frame.can_id - memo[size] > 1){
+          errors[size]++;
+        }
+        if (counters[size] > CYCLES && !results_computed[size]){
+          results[size] = (float)counters[size] / (float)(frame.can_id);
+          results_computed[size] = true;
+        }
       }
       else{
         printf("CONVERTER OR TALKER?\n");
       }
 
-      if (counters[0] > CYCLES && frame.data[0] == 0x63 && results[0] == 0.0){
-        results[0] = (float)counters[0] / (float)(frame.can_id);// - first_vals[0]);
+      int r;
+      int res_sum = 0;
+      for (r=0; r <= size; r++){
+        res_sum += results_computed[r];
       }
-
-      if (counters[1] > CYCLES && frame.data[0] == 0x74 && results[1] == 0.0){
-        results[1] = (float)counters[1] / (float)(frame.can_id);// - first_vals[1]);
+      if (res_sum == num_dev+1){
+        all_results_ready = true;
       }
-
-      if (results[0]>0 && results[1]>0){
-        printf("\n\n\n");
-        printf("can_listeners %s:\n", ifname);
-        printf("converter-bus %f\n", results[0]);
-        printf("talker-bus %f\n", results[1]);
-        exit(0);
+      else{
+        all_results_ready = false;
+      }
+      if (all_results_ready && !results_printed){
+        for (r = 0; r < size; r++){
+          if(results_computed[r]){
+            printf("converter %d->listener %s %f %d\n", r, argv[1], results[r], errors[r]);
+          }
+        }
+        printf("can_talker %s->listener %s %f %d\n", argv[1], argv[1], results[size], errors[size]);
+        results_printed = true;
       }
     }
-
-
 
     return 0;
 }

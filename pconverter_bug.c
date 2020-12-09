@@ -141,7 +141,7 @@ void close_all_sockets(struct link links[], int size);
 
 
 int main(int argc, char *argv[]){
-  if (argc != 2) {
+  if (argc < 2) {
 		fprintf(stderr,"usage: converter mode\n");
 		printf("mode is either 'pthread' or 'poll'\n");
 		exit(1);
@@ -270,7 +270,9 @@ void *process_link_pthread(void *link_ptr)
 			errors++;
 		}
 		memo = frame_received.can_id;
-		//printf("%d %c %c %c\n", frame_received.can_id, frame_received.data[0], frame_received.data[1], frame_received.data[2]);
+		if(frame_received.data[3]){
+			printf("%d %c %c %d\n", frame_received.can_id, frame_received.data[0], frame_received.data[1], frame_received.data[2]);
+		}
 
 		//some processing can be done with the received data. Here source of the
 		//frame is specified in frame_tosend.data[0] and destination in

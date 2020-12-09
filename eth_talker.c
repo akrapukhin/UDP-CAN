@@ -70,14 +70,16 @@ int main(int argc, char *argv[])
 		while(1){
 			//can_id is incremented in each message
 			frame.can_id  = mes_counter;
-			frame.can_dlc = 3; //3 bytes sent in data field
+			frame.can_dlc = 4; //3 bytes sent in data field
 			frame.data[0] = 0x65; //e - eth (source)
 			frame.data[1] = 0x63; //c - converter (destination)
-			frame.data[2] = argv[1][3] - '0'; //device to which the message sent [0-9]
+			frame.data[2] = argv[1][3] - '0'; //device num to which the message is sent [0-9]
+			frame.data[3] = 0;
 
 			//print sent messages for demo
 			if (argc >= 3 && strcmp(argv[2], "print") == 0){
 				printf("%d %c %c %d\n", frame.can_id, frame.data[0], frame.data[1], frame.data[2]);
+				frame.data[3] = 1;
 			}
 
 			//send

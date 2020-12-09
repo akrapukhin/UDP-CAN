@@ -1,6 +1,6 @@
 #!/bin/sh
-gnome-terminal --title="pconverter_bug" -- "./pconverter_bug" poll 
-gnome-terminal --title="eth_talker 4950" -- "./eth_talker" 4950
+gnome-terminal --title="pconverter_bug" -- "./pconverter_bug" pthread
+gnome-terminal --title="eth_talker 4950" -- "./eth_talker" 4950 noprint nanowait
 gnome-terminal --title="eth_talker 4951" -- "./eth_talker" 4951
 gnome-terminal --title="eth_listener" -- "./eth_listener" 2
 gnome-terminal --title="can_talker vcan0" -- "./can_talker" vcan0
