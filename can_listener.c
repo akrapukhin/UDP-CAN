@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
         exit(1);
       }
 
-      if (argc >= 4 && strcmp(argv[3], "print") == 0){
+      if (argc >= 5 && strcmp(argv[4], "print") == 0){
         printf("%d %c %c %d\n", frame.can_id, frame.data[0], frame.data[1], frame.data[2]);
       }
 

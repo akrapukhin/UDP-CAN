@@ -270,9 +270,6 @@ void *process_link_pthread(void *link_ptr)
 			errors++;
 		}
 		memo = frame_received.can_id;
-		if(frame_received.data[3]){
-			printf("%d %c %c %d\n", frame_received.can_id, frame_received.data[0], frame_received.data[1], frame_received.data[2]);
-		}
 
 		//some processing can be done with the received data. Here source of the
 		//frame is specified in frame_tosend.data[0] and destination in
@@ -310,6 +307,11 @@ void *process_link_pthread(void *link_ptr)
 		else{
 			perror("unknown link type");
 			exit(1);
+		}
+
+		if(frame_received.data[3]){
+			printf("%d %c %c %d -> %d %c %c %d\n", frame_received.can_id, frame_received.data[0], frame_received.data[1], frame_received.data[2],
+																						 frame_tosend.can_id, frame_tosend.data[0], frame_tosend.data[1], frame_tosend.data[2]);
 		}
 
 		//for testing
@@ -484,6 +486,7 @@ void process_links_poll(struct link links[], int size){
 					errors[i]++;
 				}
 				memo[i] = frame_received.can_id;
+
 				//printf("%d\n", frame_received.can_id);
 				//printf("%d %c %c %c\n", frame_received.can_id, frame_received.data[0], frame_received.data[1], frame_received.data[2]);
 
@@ -523,6 +526,11 @@ void process_links_poll(struct link links[], int size){
 				else{
 					perror("unknown link type");
 					exit(1);
+				}
+
+				if(frame_received.data[3]){
+					printf("%d %c %c %d -> %d %c %c %d\n", frame_received.can_id, frame_received.data[0], frame_received.data[1], frame_received.data[2],
+																								 frame_tosend.can_id, frame_tosend.data[0], frame_tosend.data[1], frame_tosend.data[2]);
 				}
 
 				//for testing
