@@ -1,6 +1,7 @@
 /*
 ** converter.c udp-can converter.
 ** Receives UDP datagrams, processes them and sends to CAN interfaces.
+** Alexander Krapukhin
 **
 ** В тестовом задании написано, что есть несколько интерфейсов CAN, и каждому 
 ** устройству соответствует определенный приемный UDP-порт. Как я понял, под 
