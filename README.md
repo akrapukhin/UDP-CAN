@@ -1,25 +1,39 @@
 # udp_can
-udp to can converter
+UDP-to-CAN converter. Receives UDP datagrams, processes them and sends to CAN interfaces.<br><br>
+Each device in a car (like a wheel speed sensor or an engine controller or many other electronic control units (ECU)) is connected to a CAN-bus (Controller Area Network). Cars can have many CAN-buses. Here it's assumed that each device has its own corresponding UDP-port in the converter. An external user needs to know the  address of the UDP-port to send messages to a specific device. When a UDP-message comes through the Ethernet to a specific UDP-port, the UDP-CAN converter processes it and sends it further to the corresponding CAN-interface to which the device is connected. Devices can also send messages to its bus. All the bus messages are received by the converter, processed and sent to a specified UDP-port where a user can receive them and analyze the CAN-bus traffic. <br>
+
+It is also easy to modify the code such that each bus corresponds to a specific UDP-port. In that case number of UDP-ports would be equal to the number of buses instead of the number of devices. 
+
+<br>
+A sketch of the converter can be seen below. Here five devices are connected to two buses. Two CAN-interfaces are connected to these buses. Each CAN-interface has a corresponding sending/receiving CAN-socket. There are five receiving UDP-sockets, one for each device, and one transmitting UDP-socket which sends all the bus messages outside.
+
+![sketch](https://user-images.githubusercontent.com/34278438/120108818-71d13a00-c16f-11eb-8173-2ce1a9344e26.jpg)
+ 
 
 ## Demo
-To run demo, run the following commands:
+To run the demo, enter the following commands:
+1) compile everything needed
+```
+./compile_all.sh
+```
 
-1) ./compile_all.sh
-compiles everything needed
+2) initialize two virtual CAN interfaces vcan0 and vcan1
+```
+./init_buses
+```
 
-2) ./init_buses
-initializes two virtual CAN interfaces vcan0 and vcan1
+3) run demo. There are two versions: poll and pthread. The poll version processes all connections in a sequential way by polling all the receiving sockets. The pthread version runs each connection in parallel in a separate thread.
+```
+./demo_poll.sh
+```
+```
+./demo_pthread.sh
+```
 
-3) ./demo_poll.sh 
-   ./demo_pthread.sh
-Runs demo. Two Ethernet-talkers will send messages to two udp ports
-in the convertor (4950 and 4951), one message per second. Messages will be of the form
-"counter-source-destination-channel". For example, 53 e c 1 means that the 
-eth_talker 1 sent message number 53, from ethernet (e) to converter (c).
+Two Ethernet-talkers will start sending messages to two udp ports in the convertor (ports 4950 and 4951), one message per second. Messages will be of the form
+"counter-source-destination-channel". For example, message "53 e c 1" means "eth_talker 1 sent message number 53, from ethernet (e) to converter (c).
 
-The messages from the eth-talkers are received by the converter 
-and modified. 53 e c 1 -> 53 c b 1 means that the converter sends
-the message to interface 1 (vcan1).
+The messages from the ethernet-talkers are received by the converter and modified. "53 e c 1 -> 53 c b 1" means that the converter converted "53 e c 1" to "53 c b 1". Message number 53 is sent from the converter (c) to the bus (b) sends the message to interface 1 (vcan1).
 
 This message 53 c b 1 then can be seen by can_listener 0.
 
