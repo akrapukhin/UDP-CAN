@@ -12,17 +12,17 @@ A sketch of the converter can be seen below. Here five devices are connected to 
 
 ## Demo
 To run the demo, enter the following commands:
-1) compile everything needed
+1) Compile everything needed
 ```
 ./compile_all.sh
 ```
 
-2) initialize two virtual CAN interfaces vcan0 and vcan1
+2) Initialize two virtual CAN interfaces vcan0 and vcan1
 ```
 ./init_buses.sh
 ```
 
-3) run demo. There are two versions: poll and pthread. The poll version processes all connections in a sequential way by polling all the receiving sockets. The pthread version runs each connection in parallel in a separate thread.
+3) Run the demo. There are two versions: poll and pthread. The poll version processes all connections in a sequential way by polling all the receiving sockets. The pthread version runs each connection in parallel in a separate thread.
 ```
 ./demo_poll.sh
 ```
